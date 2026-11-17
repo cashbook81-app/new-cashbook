@@ -1,0 +1,6 @@
+{
+  "name": "Cash Control",
+  "description": "Comprehensive cash calculation and tracking module with separate bundle and petty cash tables, opening balance, and Firebase synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

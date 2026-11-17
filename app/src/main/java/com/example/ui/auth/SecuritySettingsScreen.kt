@@ -1,0 +1,1697 @@
+package com.example.ui.auth
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.fragment.app.FragmentActivity
+import coil.compose.AsyncImage
+import com.example.BuildConfig
+import com.example.data.local.BiometricAvailability
+import com.example.data.local.SecurityManager
+import com.example.data.remote.model.StaffRole
+import com.example.data.remote.model.UserDto
+import com.example.data.remote.model.isSuperAdmin
+import com.example.data.remote.model.resolvedRole
+import com.example.data.remote.update.AppUpdateChecker
+import com.example.data.remote.update.UpdateCheckResult
+import com.example.data.remote.update.normalizeVersionString
+import com.example.data.remote.update.parseGitHubRepoSlug
+import com.example.data.repository.UserRepository
+import com.example.ui.update.AppUpdateDialog
+import com.example.ui.theme.CyanBorder
+import com.example.ui.theme.CyanDeep
+import com.example.ui.theme.CyanPrimary
+import com.example.ui.theme.CyanSoftTint
+import com.example.ui.theme.DangerBorder
+import com.example.ui.theme.DangerRed
+import com.example.ui.theme.IceSurface
+import com.example.ui.theme.MutedNavyText
+import com.example.ui.theme.NavyText
+import com.example.ui.theme.PlusJakartaSansFontFamily
+import com.example.ui.theme.SoftSurfaceVariant
+import com.example.ui.theme.SubtleOutline
+import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.VaultSlateDeep
+import com.example.ui.theme.White
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
+
+@Composable
+fun SecuritySettingsScreen(
+    securityManager: SecurityManager,
+    userProfile: UserDto? = null,
+    userRepository: UserRepository? = null,
+    onProfileUpdated: (UserDto) -> Unit = {},
+    onLockAppNow: () -> Unit = {}
+) {
+    ProfileScreen(
+        securityManager = securityManager,
+        userProfile = userProfile,
+        userRepository = userRepository,
+        onProfileUpdated = onProfileUpdated,
+        onLockAppNow = onLockAppNow
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileScreen(
+    securityManager: SecurityManager,
+    userProfile: UserDto? = null,
+    userRepository: UserRepository? = null,
+    onProfileUpdated: (UserDto) -> Unit = {},
+    onLockAppNow: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val credentialManagerLazy = remember(context) {
+        lazy(LazyThreadSafetyMode.NONE) { CredentialManager.create(context) }
+    }
+
+    val biometricEnabled by securityManager.isBiometricEnabled().collectAsState(initial = false)
+    val requireBiometricOnSubmit by securityManager.isRequireBiometricOnSubmit().collectAsState(initial = true)
+    val autoLockMinutes by securityManager.getAutoLockTimeoutMinutes().collectAsState(initial = 5)
+    val lastVerifiedTs by securityManager.getLastVerifiedTimestamp().collectAsState(initial = null)
+    val firebaseUser = remember {
+        try {
+            Firebase.auth.currentUser
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    var biometricAvailability by remember { mutableStateOf(BiometricAvailability.UNAVAILABLE) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
+    var isSavingProfile by remember { mutableStateOf(false) }
+    var editedPhotoBase64 by remember { mutableStateOf(userProfile?.photoBase64.orEmpty()) }
+    var isProcessingPhoto by remember { mutableStateOf(false) }
+
+    val githubRepoOverride by securityManager.getGitHubRepoOverrideFlow().collectAsState(initial = "")
+    val effectiveRepoSlug = remember(githubRepoOverride) {
+        parseGitHubRepoSlug(githubRepoOverride.ifBlank { BuildConfig.GITHUB_RELEASE_REPO })?.fullSlug
+    }
+    var isCheckingUpdates by remember { mutableStateOf(false) }
+    var updateStatusMessage by remember { mutableStateOf<String?>(null) }
+    var updateDialogResult by remember { mutableStateOf<UpdateCheckResult.UpdateAvailable?>(null) }
+    var showGitHubRepoDialog by remember { mutableStateOf(false) }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            isProcessingPhoto = true
+            coroutineScope.launch {
+                val encoded = encodeProfilePhotoToBase64(context, uri)
+                isProcessingPhoto = false
+                if (encoded != null) {
+                    editedPhotoBase64 = encoded
+                } else {
+                    snackbarHostState.showSnackbar("Unable to load selected photo.")
+                }
+            }
+        }
+    }
+
+    val openEditProfile = {
+        editedPhotoBase64 = userProfile?.photoBase64.orEmpty()
+        showEditProfileDialog = true
+    }
+
+    LaunchedEffect(securityManager) {
+        biometricAvailability = withContext(Dispatchers.IO) {
+            securityManager.getBiometricAvailability()
+        }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                coroutineScope.launch {
+                    biometricAvailability = withContext(Dispatchers.IO) {
+                        securityManager.getBiometricAvailability()
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val isBiometricAvailable = biometricAvailability == BiometricAvailability.AVAILABLE
+
+    val statusBadgeText = when {
+        biometricAvailability == BiometricAvailability.UNAVAILABLE -> "UNAVAILABLE"
+        biometricAvailability == BiometricAvailability.NONE_ENROLLED -> "NOT ENROLLED"
+        biometricEnabled -> "PROTECTED"
+        else -> "DISABLED"
+    }
+
+    val statusAccentColor by animateColorAsState(
+        targetValue = when {
+            biometricAvailability != BiometricAvailability.AVAILABLE -> DangerRed
+            biometricEnabled -> CyanDeep
+            else -> MutedNavyText
+        },
+        label = "status_color"
+    )
+
+    fun launchBiometricVerification(
+        title: String,
+        subtitle: String,
+        onVerified: suspend () -> Unit,
+        successMessage: String
+    ) {
+        if (activity == null) {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Biometric prompt requires an active screen context.")
+            }
+            return
+        }
+        securityManager.showBiometricPrompt(
+            activity = activity,
+            title = title,
+            subtitle = subtitle,
+            onSuccess = {
+                coroutineScope.launch {
+                    securityManager.recordBiometricVerification()
+                    onVerified()
+                    snackbarHostState.showSnackbar(successMessage)
+                }
+            },
+            onError = { code, errString ->
+                if (code != BiometricPrompt.ERROR_USER_CANCELED &&
+                    code != BiometricPrompt.ERROR_NEGATIVE_BUTTON &&
+                    code != BiometricPrompt.ERROR_CANCELED
+                ) {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Authentication error: $errString")
+                    }
+                }
+            },
+            onFailed = {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Fingerprint not recognized. Try again.")
+                }
+            }
+        )
+    }
+
+    val displayName = userProfile?.fullName?.ifBlank { null }
+        ?: firebaseUser?.displayName?.ifBlank { null }
+        ?: "Authorized Staff"
+    val email = userProfile?.email?.ifBlank { null }
+        ?: firebaseUser?.email
+        ?: "Authenticated via Google"
+    val initials = remember(displayName) {
+        displayName.trim()
+            .split(Regex("\\s+"))
+            .filter { it.isNotEmpty() }
+            .take(2)
+            .joinToString("") { it.first().uppercaseChar().toString() }
+            .ifEmpty { "ST" }
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            Column(modifier = Modifier.background(White)) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = "Profile",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = PlusJakartaSansFontFamily,
+                                    fontSize = 18.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = NavyText
+                            )
+                            Text(
+                                text = "Account & Vault Security",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = MutedNavyText
+                            )
+                        }
+                    },
+                    actions = {
+                        if (userProfile != null && userRepository != null) {
+                            Surface(
+                                onClick = openEditProfile,
+                                shape = RoundedCornerShape(10.dp),
+                                color = CyanSoftTint,
+                                border = BorderStroke(1.dp, CyanBorder),
+                                modifier = Modifier
+                                    .padding(end = 12.dp)
+                                    .minimumInteractiveComponentSize()
+                                    .heightIn(min = 40.dp)
+                                    .testTag("edit_profile_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Edit,
+                                        contentDescription = "Edit Profile",
+                                        tint = CyanDeep,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = "Edit",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        color = CyanDeep
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = White)
+                )
+                HorizontalDivider(thickness = 1.dp, color = SubtleOutline)
+            }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = IceSurface
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(IceSurface)
+                .padding(padding),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 600.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Executive Banking Credential Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(VaultSlateDeep, CyanDeep, CyanPrimary)
+                            )
+                        )
+                        .padding(16.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ProfileAvatar(
+                                photoBase64 = userProfile?.photoBase64.orEmpty(),
+                                fallbackPhotoUrl = firebaseUser?.photoUrl,
+                                initials = initials,
+                                size = 56.dp,
+                                borderColor = Color.White.copy(alpha = 0.42f),
+                                backgroundColor = Color.White.copy(alpha = 0.16f),
+                                initialsColor = White,
+                                modifier = if (userProfile != null && userRepository != null) {
+                                    Modifier.clickable(onClick = openEditProfile)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = displayName,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 17.5.sp
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = email,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color.White.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(50.dp),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.24f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(SuccessGreen)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = "Verified",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = White
+                                    )
+                                }
+                            }
+                        }
+
+                        if (userProfile != null) {
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                ProfileCredentialItem(
+                                    label = "ROLE",
+                                    value = userProfile.resolvedRole().displayLabel.uppercase(),
+                                    modifier = Modifier.weight(0.9f)
+                                )
+                                ProfileCredentialItem(
+                                    label = "STAFF ID",
+                                    value = userProfile.staffId,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                ProfileCredentialItem(
+                                    label = "BRANCH",
+                                    value = if (userProfile.resolvedRole() == StaffRole.MANAGER || userProfile.resolvedRole() == StaffRole.ADMIN) {
+                                        "ALL BRANCHES"
+                                    } else {
+                                        userProfile.branchId
+                                    },
+                                    modifier = Modifier.weight(1.2f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Account & Authentication Telemetry Card
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = White,
+                    shadowElevation = 0.dp,
+                    border = BorderStroke(1.dp, SubtleOutline)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "ACCOUNT & SESSION",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.5.sp,
+                                letterSpacing = 0.8.sp
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = MutedNavyText
+                        )
+
+                        val accessScopeLabel = if (userProfile?.resolvedRole() == StaffRole.MANAGER || userProfile?.resolvedRole() == StaffRole.ADMIN) {
+                            "Google Identity · All-Branches Access"
+                        } else {
+                            "Google Identity · Branch-Isolated Access"
+                        }
+                        AccountDetailRow(
+                            icon = Icons.Rounded.VerifiedUser,
+                            title = "Authentication",
+                            subtitle = accessScopeLabel,
+                            trailingBadge = if (userProfile?.active == true || userProfile?.isSuperAdmin() == true) "Active" else "Pending"
+                        )
+
+                        HorizontalDivider(color = SubtleOutline)
+
+                        val verifiedLabel = remember(lastVerifiedTs) {
+                            if (lastVerifiedTs != null) {
+                                SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+                                    .format(Date(lastVerifiedTs!!))
+                            } else {
+                                "No recent check"
+                            }
+                        }
+                        AccountDetailRow(
+                            icon = Icons.Rounded.Schedule,
+                            title = "Last Biometric Verification",
+                            subtitle = verifiedLabel,
+                            trailingBadge = null
+                        )
+                    }
+                }
+
+                // Biometric & Access Controls Card
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = White,
+                    shadowElevation = 0.dp,
+                    border = BorderStroke(1.dp, SubtleOutline)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "VAULT SECURITY",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    letterSpacing = 0.8.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = MutedNavyText
+                            )
+                            Surface(
+                                color = if (biometricEnabled && isBiometricAvailable) CyanSoftTint else SoftSurfaceVariant,
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (biometricEnabled && isBiometricAvailable) CyanBorder else SubtleOutline
+                                )
+                            ) {
+                                Text(
+                                    text = statusBadgeText,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusAccentColor,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Biometric Login Toggle
+                        SecuritySwitchRow(
+                            icon = Icons.Rounded.Fingerprint,
+                            title = "Biometric Login",
+                            subtitle = "Require fingerprint to unlock Cash Control",
+                            checked = biometricEnabled,
+                            enabled = isBiometricAvailable || biometricEnabled,
+                            switchTag = "biometric_toggle_switch",
+                            onCheckedChange = { wantEnabled ->
+                                if (wantEnabled) {
+                                    launchBiometricVerification(
+                                        title = "Enable Biometric Login",
+                                        subtitle = "Verify your fingerprint to continue",
+                                        onVerified = {
+                                            securityManager.setBiometricEnabled(true)
+                                            userRepository?.updateSecurityPreferences(
+                                                biometricEnabled = true,
+                                                fallbackProfile = userProfile
+                                            )
+                                            userProfile?.let { onProfileUpdated(it.copy(biometricEnabled = true)) }
+                                        },
+                                        successMessage = "Biometric login enabled."
+                                    )
+                                } else {
+                                    if (isBiometricAvailable) {
+                                        launchBiometricVerification(
+                                            title = "Disable Biometric Login",
+                                            subtitle = "Verify your identity to turn off",
+                                            onVerified = {
+                                                securityManager.setBiometricEnabled(false)
+                                                userRepository?.updateSecurityPreferences(
+                                                    biometricEnabled = false,
+                                                    fallbackProfile = userProfile
+                                                )
+                                                userProfile?.let { onProfileUpdated(it.copy(biometricEnabled = false)) }
+                                            },
+                                            successMessage = "Biometric login disabled."
+                                        )
+                                    } else {
+                                        coroutineScope.launch {
+                                            securityManager.setBiometricEnabled(false)
+                                            userRepository?.updateSecurityPreferences(
+                                                biometricEnabled = false,
+                                                fallbackProfile = userProfile
+                                            )
+                                            userProfile?.let { onProfileUpdated(it.copy(biometricEnabled = false)) }
+                                        }
+                                    }
+                                }
+                            }
+                        )
+
+                        AnimatedVisibility(visible = biometricEnabled && isBiometricAvailable) {
+                            Column {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = SubtleOutline
+                                )
+                                SecuritySwitchRow(
+                                    icon = Icons.Rounded.TaskAlt,
+                                    title = "Confirm Day Closing",
+                                    subtitle = "Verify fingerprint before submitting closing",
+                                    checked = requireBiometricOnSubmit,
+                                    enabled = true,
+                                    switchTag = "biometric_submit_switch",
+                                    onCheckedChange = { checked ->
+                                        coroutineScope.launch {
+                                            securityManager.setRequireBiometricOnSubmit(checked)
+                                            userRepository?.updateSecurityPreferences(
+                                                requireBiometricOnSubmit = checked,
+                                                fallbackProfile = userProfile
+                                            )
+                                            userProfile?.let { onProfileUpdated(it.copy(requireBiometricOnSubmit = checked)) }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            color = SubtleOutline
+                        )
+
+                        // Auto-Lock Timeout Segmented Bar
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ProfileSettingIcon(Icons.Rounded.Timer)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Session Auto-Lock",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NavyText
+                                )
+                                Text(
+                                    text = "Automatically lock after inactivity",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    color = MutedNavyText
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val options = listOf(1 to "1m", 5 to "5m", 15 to "15m", -1 to "Off")
+                        val selectorEnabled = biometricEnabled && isBiometricAvailable
+                        Surface(
+                            shape = RoundedCornerShape(11.dp),
+                            color = SoftSurfaceVariant,
+                            border = BorderStroke(1.dp, SubtleOutline),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                options.forEach { (minutes, label) ->
+                                    val selected = autoLockMinutes == minutes
+                                    Surface(
+                                        onClick = {
+                                            if (selectorEnabled) {
+                                                coroutineScope.launch {
+                                                    securityManager.setAutoLockTimeoutMinutes(minutes)
+                                                    userRepository?.updateSecurityPreferences(
+                                                        autoLockTimeoutMinutes = minutes,
+                                                        fallbackProfile = userProfile
+                                                    )
+                                                    userProfile?.let { onProfileUpdated(it.copy(autoLockTimeoutMinutes = minutes)) }
+                                                }
+                                            }
+                                        },
+                                        enabled = selectorEnabled,
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (selected && selectorEnabled) White else Color.Transparent,
+                                        shadowElevation = if (selected && selectorEnabled) 1.dp else 0.dp,
+                                        border = if (selected && selectorEnabled) {
+                                            BorderStroke(1.dp, CyanBorder)
+                                        } else {
+                                            null
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 38.dp)
+                                            .testTag("timeout_chip_$minutes")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                color = when {
+                                                    !selectorEnabled -> MutedNavyText.copy(alpha = 0.45f)
+                                                    selected -> CyanDeep
+                                                    else -> MutedNavyText
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = SubtleOutline
+                        )
+
+                        if (biometricAvailability == BiometricAvailability.NONE_ENROLLED) {
+                            OutlinedButton(
+                                onClick = {
+                                    val enrollIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                        Intent(Settings.ACTION_BIOMETRIC_ENROLL).apply {
+                                            putExtra(
+                                                Settings.EXTRA_BIOMETRIC_AUTHENTICATORS_ALLOWED,
+                                                BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                                            )
+                                        }
+                                    } else {
+                                        Intent(Settings.ACTION_SECURITY_SETTINGS)
+                                    }
+                                    try {
+                                        context.startActivity(enrollIntent)
+                                    } catch (_: Exception) {
+                                        context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                                    }
+                                },
+                                shape = RoundedCornerShape(11.dp),
+                                border = BorderStroke(1.dp, CyanBorder),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanPrimary),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("enroll_biometric_button")
+                            ) {
+                                Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Enroll Fingerprint", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        launchBiometricVerification(
+                                            title = "Verify Identity",
+                                            subtitle = "Touch the fingerprint sensor",
+                                            onVerified = { },
+                                            successMessage = "Verified."
+                                        )
+                                    },
+                                    enabled = isBiometricAvailable,
+                                    shape = RoundedCornerShape(11.dp),
+                                    border = BorderStroke(1.dp, SubtleOutline),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NavyText),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("verify_biometric_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Fingerprint,
+                                        contentDescription = null,
+                                        tint = CyanPrimary,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Verify Now", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                if (biometricEnabled && isBiometricAvailable) {
+                                    FilledTonalButton(
+                                        onClick = onLockAppNow,
+                                        shape = RoundedCornerShape(11.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = CyanSoftTint,
+                                            contentColor = CyanDeep
+                                        ),
+                                        border = BorderStroke(1.dp, CyanBorder),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("lock_app_now_button")
+                                    ) {
+                                        Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Lock App", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // App Version & GitHub Release Updates Card
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = White,
+                    shadowElevation = 0.dp,
+                    border = BorderStroke(1.dp, SubtleOutline)
+                ) {
+                    val installedVersion = normalizeVersionString(BuildConfig.VERSION_NAME).ifBlank { "1.0.0" }
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "APP VERSION & UPDATES",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    letterSpacing = 0.8.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = MutedNavyText
+                            )
+                            Surface(
+                                color = CyanSoftTint,
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, CyanBorder)
+                            ) {
+                                Text(
+                                    text = "v$installedVersion (${BuildConfig.VERSION_CODE})",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyanDeep,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ProfileSettingIcon(Icons.Rounded.CloudDownload)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "GitHub Release Source",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NavyText
+                                )
+                                Text(
+                                    text = effectiveRepoSlug ?: "Not configured (tap Set)",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                                    color = if (effectiveRepoSlug != null) MutedNavyText else CyanDeep,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            TextButton(
+                                onClick = { showGitHubRepoDialog = true },
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("configure_github_repo_button")
+                            ) {
+                                Text(
+                                    text = if (effectiveRepoSlug != null) "Edit" else "Set",
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyanDeep,
+                                    fontSize = 12.5.sp
+                                )
+                            }
+                        }
+
+                        if (!updateStatusMessage.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = IceSurface,
+                                border = BorderStroke(1.dp, SubtleOutline),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = updateStatusMessage!!,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                                    color = NavyText,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                if (!isCheckingUpdates) {
+                                    isCheckingUpdates = true
+                                    updateStatusMessage = null
+                                    coroutineScope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            AppUpdateChecker(securityManager).checkForUpdate(
+                                                ignoreSkippedVersion = true
+                                            )
+                                        }
+                                        isCheckingUpdates = false
+                                        when (result) {
+                                            is UpdateCheckResult.UpdateAvailable -> {
+                                                updateStatusMessage = "New release v${result.release.versionName} available."
+                                                updateDialogResult = result
+                                            }
+                                            is UpdateCheckResult.UpToDate -> {
+                                                updateStatusMessage = "Up to date (v${result.currentVersion})."
+                                            }
+                                            UpdateCheckResult.NotConfigured -> {
+                                                updateStatusMessage = "Set your GitHub repository (owner/repo) to check releases."
+                                                showGitHubRepoDialog = true
+                                            }
+                                            is UpdateCheckResult.Error -> {
+                                                updateStatusMessage = result.message
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdates,
+                            shape = RoundedCornerShape(11.dp),
+                            border = BorderStroke(1.dp, CyanBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = CyanSoftTint.copy(alpha = 0.45f),
+                                contentColor = CyanDeep
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("check_for_updates_button")
+                        ) {
+                            if (isCheckingUpdates) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = CyanDeep
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Checking Releases...", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.SystemUpdate,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Check for Updates", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+
+                // Understated Enterprise Sign Out Button
+                OutlinedButton(
+                    onClick = { showLogoutDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("logout_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, DangerBorder),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = White,
+                        contentColor = DangerRed
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Logout,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Sign Out",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Text(
+                    text = "Cash Control · Encrypted Branch Ledger",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    color = MutedNavyText.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 2.dp, bottom = 6.dp)
+                )
+            }
+        }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            containerColor = White,
+            title = {
+                Text(
+                    "Sign Out",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    "End your session on this device?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MutedNavyText
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        signOut(credentialManagerLazy.value, coroutineScope)
+                    }
+                ) {
+                    Text("SIGN OUT", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("CANCEL", color = MutedNavyText)
+                }
+            }
+        )
+    }
+
+    if (showEditProfileDialog && userProfile != null && userRepository != null) {
+        var editedName by remember(showEditProfileDialog, userProfile.fullName) { mutableStateOf(userProfile.fullName) }
+        var editedStaffId by remember(showEditProfileDialog, userProfile.staffId) { mutableStateOf(userProfile.staffId) }
+        var editedBranchId by remember(showEditProfileDialog, userProfile.branchId) { mutableStateOf(userProfile.branchId) }
+        var editError by remember(showEditProfileDialog) { mutableStateOf<String?>(null) }
+
+        val launchPhotoPicker = {
+            photoPickerLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }
+
+        AlertDialog(
+            onDismissRequest = { if (!isSavingProfile && !isProcessingPhoto) showEditProfileDialog = false },
+            containerColor = White,
+            title = {
+                Text(
+                    "Edit Profile",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = NavyText
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .testTag("edit_profile_avatar_picker"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ProfileAvatar(
+                                photoBase64 = editedPhotoBase64,
+                                fallbackPhotoUrl = if (editedPhotoBase64.isBlank()) firebaseUser?.photoUrl else null,
+                                initials = initials,
+                                size = 84.dp,
+                                borderColor = CyanBorder,
+                                backgroundColor = CyanSoftTint,
+                                initialsColor = CyanDeep,
+                                modifier = Modifier.clickable(
+                                    enabled = !isSavingProfile && !isProcessingPhoto,
+                                    onClick = launchPhotoPicker
+                                )
+                            )
+                            if (isProcessingPhoto) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(84.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.35f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = White
+                                    )
+                                }
+                            }
+                            Surface(
+                                onClick = launchPhotoPicker,
+                                enabled = !isSavingProfile && !isProcessingPhoto,
+                                shape = CircleShape,
+                                color = CyanPrimary,
+                                border = BorderStroke(2.dp, White),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(28.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.PhotoCamera,
+                                        contentDescription = "Choose profile photo",
+                                        tint = White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilledTonalButton(
+                                onClick = launchPhotoPicker,
+                                enabled = !isSavingProfile && !isProcessingPhoto,
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = CyanSoftTint,
+                                    contentColor = CyanDeep
+                                ),
+                                border = BorderStroke(1.dp, CyanBorder),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 38.dp)
+                                    .testTag("pick_profile_photo_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AddAPhoto,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (editedPhotoBase64.isNotBlank()) "Change Photo" else "Add Photo",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            if (editedPhotoBase64.isNotBlank()) {
+                                TextButton(
+                                    onClick = { editedPhotoBase64 = "" },
+                                    enabled = !isSavingProfile && !isProcessingPhoto,
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .testTag("remove_profile_photo_button")
+                                ) {
+                                    Text(
+                                        text = "Remove",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                        color = DangerRed,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    val canEditAdminFields = userProfile.isSuperAdmin()
+                    OutlinedTextField(
+                        value = editedName,
+                        onValueChange = { editedName = it; editError = null },
+                        label = { Text("Full Name") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_full_name_input")
+                    )
+                    OutlinedTextField(
+                        value = editedStaffId,
+                        onValueChange = { if (canEditAdminFields) { editedStaffId = it.uppercase(); editError = null } },
+                        enabled = canEditAdminFields,
+                        readOnly = !canEditAdminFields,
+                        label = { Text("Staff ID") },
+                        supportingText = if (!canEditAdminFields) {
+                            { Text("Assigned by System Admin") }
+                        } else {
+                            null
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_staff_id_input")
+                    )
+                    OutlinedTextField(
+                        value = editedBranchId,
+                        onValueChange = { if (canEditAdminFields) { editedBranchId = it.uppercase(); editError = null } },
+                        enabled = canEditAdminFields,
+                        readOnly = !canEditAdminFields,
+                        label = { Text("Branch ID") },
+                        supportingText = if (!canEditAdminFields) {
+                            { Text("Assigned by System Admin (${userProfile.resolvedRole().displayLabel})") }
+                        } else {
+                            null
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_branch_id_input")
+                    )
+                    if (editError != null) {
+                        Text(
+                            text = editError!!,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                val canEditAdminFields = userProfile.isSuperAdmin()
+                Button(
+                    onClick = {
+                        if (editedName.isBlank() || (canEditAdminFields && (editedStaffId.isBlank() || editedBranchId.isBlank()))) {
+                            editError = "Required fields cannot be empty."
+                            return@Button
+                        }
+                        isSavingProfile = true
+                        coroutineScope.launch {
+                            val result = userRepository.updateUserProfile(
+                                fullName = editedName,
+                                staffId = editedStaffId,
+                                branchId = editedBranchId,
+                                photoBase64 = editedPhotoBase64,
+                                biometricEnabled = biometricEnabled,
+                                requireBiometricOnSubmit = requireBiometricOnSubmit,
+                                autoLockTimeoutMinutes = autoLockMinutes,
+                                allowAdminAssignedFields = canEditAdminFields
+                            )
+                            result.onSuccess { updated ->
+                                val uid = firebaseUser?.uid
+                                if (!uid.isNullOrBlank()) {
+                                    withContext(Dispatchers.IO) {
+                                        securityManager.saveCachedUserProfile(uid, updated)
+                                    }
+                                }
+                                isSavingProfile = false
+                                onProfileUpdated(updated)
+                                showEditProfileDialog = false
+                                snackbarHostState.showSnackbar("Profile saved.")
+                            }.onFailure { err ->
+                                isSavingProfile = false
+                                editError = err.localizedMessage ?: "Failed to save profile."
+                            }
+                        }
+                    },
+                    enabled = !isSavingProfile && !isProcessingPhoto,
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                    modifier = Modifier.testTag("save_profile_button")
+                ) {
+                    if (isSavingProfile) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = White
+                        )
+                    } else {
+                        Text("SAVE", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showEditProfileDialog = false },
+                    enabled = !isSavingProfile && !isProcessingPhoto
+                ) {
+                    Text("CANCEL", color = MutedNavyText)
+                }
+            }
+        )
+    }
+
+    if (showGitHubRepoDialog) {
+        var repoInput by remember(showGitHubRepoDialog, githubRepoOverride) {
+            mutableStateOf(
+                githubRepoOverride.ifBlank { BuildConfig.GITHUB_RELEASE_REPO }
+            )
+        }
+        var repoError by remember(showGitHubRepoDialog) { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showGitHubRepoDialog = false },
+            containerColor = White,
+            title = {
+                Text(
+                    text = "GitHub Release Repository",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = NavyText
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Enter your GitHub repository (e.g. myorg/cash-control) where APK releases are published.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedNavyText
+                    )
+                    OutlinedTextField(
+                        value = repoInput,
+                        onValueChange = {
+                            repoInput = it
+                            repoError = null
+                        },
+                        label = { Text("owner/repo") },
+                        placeholder = { Text("username/cash-control") },
+                        singleLine = true,
+                        isError = repoError != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("github_repo_input")
+                    )
+                    if (repoError != null) {
+                        Text(
+                            text = repoError!!,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = DangerRed
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = repoInput.trim()
+                        if (trimmed.isEmpty()) {
+                            coroutineScope.launch {
+                                securityManager.setGitHubRepoOverride("")
+                                showGitHubRepoDialog = false
+                                updateStatusMessage = null
+                            }
+                            return@Button
+                        }
+                        val parsed = parseGitHubRepoSlug(trimmed)
+                        if (parsed == null) {
+                            repoError = "Use format owner/repo or a GitHub URL."
+                        } else {
+                            coroutineScope.launch {
+                                securityManager.setGitHubRepoOverride(parsed.fullSlug)
+                                showGitHubRepoDialog = false
+                                updateStatusMessage = "Release source set to ${parsed.fullSlug}."
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("save_github_repo_button")
+                ) {
+                    Text("SAVE", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showGitHubRepoDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("CANCEL", color = MutedNavyText)
+                }
+            }
+        )
+    }
+
+    val manualUpdate = updateDialogResult
+    if (manualUpdate != null) {
+        AppUpdateDialog(
+            currentVersion = manualUpdate.currentVersion,
+            release = manualUpdate.release,
+            onDismiss = { updateDialogResult = null },
+            onSkipVersion = { skippedVersion ->
+                updateDialogResult = null
+                coroutineScope.launch(Dispatchers.IO) {
+                    securityManager.setSkippedUpdateVersion(skippedVersion)
+                }
+                updateStatusMessage = "Skipped notifications for v$skippedVersion."
+            }
+        )
+    }
+}
+
+@Composable
+private fun AccountDetailRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    trailingBadge: String?
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ProfileSettingIcon(icon)
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = NavyText
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                color = MutedNavyText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (trailingBadge != null) {
+            Surface(
+                color = CyanSoftTint,
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(1.dp, CyanBorder)
+            ) {
+                Text(
+                    text = trailingBadge,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = CyanDeep,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecuritySwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    switchTag: String,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .minimumInteractiveComponentSize(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ProfileSettingIcon(icon)
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = NavyText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    color = MutedNavyText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = White,
+                checkedTrackColor = CyanPrimary,
+                uncheckedThumbColor = MutedNavyText,
+                uncheckedTrackColor = SoftSurfaceVariant,
+                uncheckedBorderColor = CyanBorder
+            ),
+            modifier = Modifier.testTag(switchTag)
+        )
+    }
+}
+
+@Composable
+private fun ProfileSettingIcon(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(CyanSoftTint)
+            .border(1.dp, CyanBorder.copy(alpha = 0.55f), RoundedCornerShape(9.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = CyanPrimary,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun ProfileCredentialItem(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 0.6.sp
+            ),
+            color = Color.White.copy(alpha = 0.72f),
+            maxLines = 1
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = 12.sp,
+                fontFeatureSettings = "tnum"
+            ),
+            fontWeight = FontWeight.Bold,
+            color = White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ProfileAvatar(
+    photoBase64: String,
+    fallbackPhotoUrl: Uri?,
+    initials: String,
+    size: Dp,
+    borderColor: Color,
+    backgroundColor: Color,
+    initialsColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val decodedBitmap by produceState<ImageBitmap?>(initialValue = null, photoBase64) {
+        value = if (photoBase64.isNotBlank()) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val bytes = Base64.decode(photoBase64, Base64.DEFAULT)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        } else {
+            null
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(backgroundColor)
+            .border(1.5.dp, borderColor, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = initials,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = PlusJakartaSansFontFamily,
+                fontSize = (size.value * 0.32f).sp
+            ),
+            fontWeight = FontWeight.Bold,
+            color = initialsColor
+        )
+        if (decodedBitmap != null) {
+            Image(
+                bitmap = decodedBitmap!!,
+                contentDescription = "Profile Picture",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (fallbackPhotoUrl != null) {
+            AsyncImage(
+                model = fallbackPhotoUrl,
+                contentDescription = "Profile Picture",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+private suspend fun encodeProfilePhotoToBase64(context: Context, uri: Uri): String? =
+    withContext(Dispatchers.IO) {
+        try {
+            val resolver = context.contentResolver
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, boundsOptions)
+            }
+            if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) return@withContext null
+
+            var sampleSize = 1
+            val maxDim = 512
+            while (boundsOptions.outWidth / sampleSize > maxDim || boundsOptions.outHeight / sampleSize > maxDim) {
+                sampleSize *= 2
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val rawBitmap = resolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            } ?: return@withContext null
+
+            val orientation = resolver.openInputStream(uri)?.use { stream ->
+                ExifInterface(stream).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
+
+            val rotated = when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(rawBitmap, 90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(rawBitmap, 180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(rawBitmap, 270f)
+                else -> rawBitmap
+            }
+            if (rotated !== rawBitmap) rawBitmap.recycle()
+
+            val cropSize = minOf(rotated.width, rotated.height)
+            val cropX = (rotated.width - cropSize) / 2
+            val cropY = (rotated.height - cropSize) / 2
+            val square = Bitmap.createBitmap(rotated, cropX, cropY, cropSize, cropSize)
+            if (square !== rotated) rotated.recycle()
+
+            val targetSize = 256
+            val finalBitmap = if (square.width > targetSize) {
+                Bitmap.createScaledBitmap(square, targetSize, targetSize, true).also {
+                    if (it !== square) square.recycle()
+                }
+            } else {
+                square
+            }
+
+            val out = ByteArrayOutputStream()
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            finalBitmap.recycle()
+
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+private fun rotateBitmap(source: Bitmap, degrees: Float): Bitmap {
+    val matrix = Matrix().apply { postRotate(degrees) }
+    return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+}

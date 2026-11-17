@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Authorized staff profile managed by system Admin.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "staffId": { "type": "string" },
+        "branchId": { "type": "string" },
+        "role": { "type": "string", "enum": ["CASHIER", "AUDITOR", "MANAGER", "ADMIN", "CSO", "SUPERVISOR"] },
+        "photoBase64": { "type": "string" },
+        "active": { "type": "boolean" },
+        "canCreateCashSession": { "type": "boolean" },
+        "canEditOwnDraft": { "type": "boolean" },
+        "canFinalizeDailyClosing": { "type": "boolean" },
+        "canViewOwnBranchHistory": { "type": "boolean" },
+        "biometricEnabled": { "type": "boolean" },
+        "requireBiometricOnSubmit": { "type": "boolean" },
+        "autoLockTimeoutMinutes": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "staffId", "branchId", "role", "active"]
+    },
+    "CashSession": {
+      "title": "Cash Session",
+      "description": "Single daily cash counting session per branch and working day.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "branchId": { "type": "string" },
+        "staffId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "businessDate": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "openingBalanceMinor": { "type": "number" },
+        "totalDRMinor": { "type": "number" },
+        "totalCRMinor": { "type": "number" },
+        "expectedEndingMinor": { "type": "number" },
+        "bundleCashMinor": { "type": "number" },
+        "pettyCashMinor": { "type": "number" },
+        "totalCountedMinor": { "type": "number" },
+        "differenceMinor": { "type": "number" },
+        "reconciliationStatus": { "type": "string", "enum": ["BALANCED", "SHORTAGE", "EXCESS"] },
+        "status": { "type": "string", "enum": ["DRAFT", "CLOSED"] },
+        "isFinal": { "type": "boolean" },
+        "isApproved": { "type": "boolean" },
+        "approvedBy": { "type": "string" },
+        "approvalTimestamp": { "type": "number" },
+        "version": { "type": "number" }
+      },
+      "required": ["sessionId", "branchId", "staffId", "ownerUid", "businessDate", "status", "reconciliationStatus"]
+    },
+    "CashDenomination": {
+      "title": "Cash Denomination",
+      "description": "Denomination breakdown for bundle or petty cash.",
+      "type": "object",
+      "properties": {
+        "branchId": { "type": "string" },
+        "staffId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "cashType": { "type": "string", "enum": ["BUNDLE", "PETTY"] },
+        "denominationMinor": { "type": "number" },
+        "quantity": { "type": "number" },
+        "bundles": { "type": "number" },
+        "notesPerBundle": { "type": "number" },
+        "looseNotes": { "type": "number" },
+        "subtotalMinor": { "type": "number" }
+      },
+      "required": ["branchId", "staffId", "ownerUid", "cashType", "denominationMinor", "quantity", "subtotalMinor"]
+    },
+    "CashTransaction": {
+      "title": "Cash Transaction",
+      "description": "Daily DR or CR transaction entry.",
+      "type": "object",
+      "properties": {
+        "branchId": { "type": "string" },
+        "staffId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "transactionType": { "type": "string", "enum": ["DR", "CR"] },
+        "amountMinor": { "type": "number" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["branchId", "staffId", "ownerUid", "transactionId", "transactionType", "amountMinor"]
+    },
+    "AuditorCheck": {
+      "title": "Auditor Daily Check",
+      "description": "Daily DR/CR reconciliation check submitted by a branch Auditor for the branch Cashier.",
+      "type": "object",
+      "properties": {
+        "checkId": { "type": "string" },
+        "branchId": { "type": "string" },
+        "auditorUid": { "type": "string" },
+        "auditorStaffId": { "type": "string" },
+        "auditorName": { "type": "string" },
+        "businessDate": { "type": "number" },
+        "openingBalanceMinor": { "type": "number" },
+        "totalDRMinor": { "type": "number" },
+        "totalCRMinor": { "type": "number" },
+        "expectedEndingMinor": { "type": "number" },
+        "cashierCountedMinor": { "type": "number" },
+        "differenceMinor": { "type": "number" },
+        "checkStatus": { "type": "string", "enum": ["BALANCED", "SHORTAGE", "EXCESS", "PENDING_CASHIER"] },
+        "notes": { "type": "string" },
+        "appliedByCashier": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["checkId", "branchId", "auditorUid", "auditorStaffId", "businessDate", "openingBalanceMinor", "totalDRMinor", "totalCRMinor", "expectedEndingMinor", "checkStatus"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles and branch/role assignments."
+    },
+    "/cashSessions/{sessionId}": {
+      "schema": "CashSession",
+      "description": "Root collection for all cash sessions."
+    },
+    "/cashSessions/{sessionId}/denominations/{denominationId}": {
+      "schema": "CashDenomination",
+      "description": "Denomination counts for a cash session."
+    },
+    "/cashSessions/{sessionId}/transactions/{transactionId}": {
+      "schema": "CashTransaction",
+      "description": "Daily DR/CR entries for a cash session."
+    },
+    "/auditorChecks/{checkId}": {
+      "schema": "AuditorCheck",
+      "description": "Daily DR and CR verification checks submitted by branch Auditors."
+    },
+    "/branches/{branchId}": {
+      "schema": "object",
+      "description": "Branch metadata."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "object",
+      "description": "Audit trail."
+    }
+  }
+}

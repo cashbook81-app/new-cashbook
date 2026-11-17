@@ -1,0 +1,364 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function userProfileExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdminByEmail() {
+      return isSignedIn()
+        && request.auth.token.get('email', '') == 'cashbook81@gmail.com'
+        && request.auth.token.get('email_verified', false) == true;
+    }
+
+    function isAdmin() {
+      return isAdminByEmail()
+        || (isSignedIn() && userProfileExists() && userProfile().role == "ADMIN" && userProfile().active == true);
+    }
+
+    function isActiveUser() {
+      return isSignedIn()
+        && userProfileExists()
+        && userProfile().active == true;
+    }
+
+    function isManagerOrAdmin() {
+      return isAdmin()
+        || (isActiveUser() && userProfile().role in ["MANAGER", "SUPERVISOR"]);
+    }
+
+    function activeCashier(branchId) {
+      return isSignedIn()
+        && userProfileExists()
+        && userProfile().active == true
+        && userProfile().role in ["CASHIER", "CSO", "ADMIN"]
+        && (userProfile().role == "ADMIN" || userProfile().branchId == branchId)
+        && userProfile().canFinalizeDailyClosing == true;
+    }
+
+    function activeAuditor(branchId) {
+      return isSignedIn()
+        && userProfileExists()
+        && userProfile().active == true
+        && userProfile().role in ["AUDITOR", "ADMIN"]
+        && (userProfile().role == "ADMIN" || userProfile().branchId == branchId);
+    }
+
+    function activeApprover(branchId) {
+      return isManagerOrAdmin()
+        || (isActiveUser()
+          && userProfile().role in ["AUDITOR", "SUPERVISOR"]
+          && userProfile().branchId == branchId);
+    }
+
+    function isValidUser(data) {
+      return data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120
+        && (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 160))
+        && data.staffId is string && data.staffId.size() >= 1 && data.staffId.size() <= 64
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 64
+        && data.role is string && data.role in ["CASHIER", "AUDITOR", "MANAGER", "ADMIN", "CSO", "SUPERVISOR"]
+        && data.active is bool
+        && (!('photoBase64' in data) || data.photoBase64 == null || (data.photoBase64 is string && data.photoBase64.size() <= 210000))
+        && (!('canCreateCashSession' in data) || data.canCreateCashSession is bool)
+        && (!('canEditOwnDraft' in data) || data.canEditOwnDraft is bool)
+        && (!('canFinalizeDailyClosing' in data) || data.canFinalizeDailyClosing is bool)
+        && (!('canViewOwnBranchHistory' in data) || data.canViewOwnBranchHistory is bool)
+        && (!('biometricEnabled' in data) || data.biometricEnabled is bool)
+        && (!('requireBiometricOnSubmit' in data) || data.requireBiometricOnSubmit is bool)
+        && (!('autoLockTimeoutMinutes' in data) || (data.autoLockTimeoutMinutes is int && data.autoLockTimeoutMinutes >= -1 && data.autoLockTimeoutMinutes <= 120))
+        && (!('createdAt' in data) || data.createdAt == null || (data.createdAt is timestamp && data.createdAt <= request.time))
+        && (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidCashSession(data) {
+      return data.sessionId is string && isValidId(data.sessionId)
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 64
+        && data.staffId is string && data.staffId.size() >= 1 && data.staffId.size() <= 64
+        && (!('ownerUid' in data) || (data.ownerUid is string && data.ownerUid.size() <= 128))
+        && data.businessDate is int
+        && data.openingBalanceMinor is int
+        && data.totalDRMinor is int
+        && data.totalCRMinor is int
+        && data.expectedEndingMinor is int
+        && data.bundleCashMinor is int
+        && data.pettyCashMinor is int
+        && data.totalCountedMinor is int
+        && data.differenceMinor is int
+        && data.reconciliationStatus is string && data.reconciliationStatus in ["BALANCED", "SHORTAGE", "EXCESS"]
+        && data.status is string && data.status in ["DRAFT", "CLOSED"]
+        && data.isFinal is bool
+        && data.isApproved is bool
+        && (!('approvedBy' in data) || data.approvedBy == null || (data.approvedBy is string && data.approvedBy.size() >= 1 && data.approvedBy.size() <= 128 && data.approvedBy != data.staffId))
+        && (!('approvalTimestamp' in data) || data.approvalTimestamp == null || data.approvalTimestamp is int)
+        && (!('version' in data) || data.version is int)
+        && (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time))
+        && (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidDenomination(data) {
+      return data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 64
+        && data.staffId is string && data.staffId.size() >= 1 && data.staffId.size() <= 64
+        && (!('ownerUid' in data) || (data.ownerUid is string && data.ownerUid == request.auth.uid))
+        && data.cashType is string && data.cashType in ["BUNDLE", "PETTY"]
+        && data.denominationMinor is int && data.denominationMinor > 0
+        && data.quantity is int && data.quantity >= 0
+        && (!('bundles' in data) || (data.bundles is int && data.bundles >= 0))
+        && (!('notesPerBundle' in data) || (data.notesPerBundle is int && data.notesPerBundle >= 0))
+        && (!('looseNotes' in data) || (data.looseNotes is int && data.looseNotes >= 0))
+        && data.subtotalMinor is int && data.subtotalMinor >= 0;
+    }
+
+    function isValidTransaction(data) {
+      return data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 64
+        && data.staffId is string && data.staffId.size() >= 1 && data.staffId.size() <= 64
+        && (!('ownerUid' in data) || (data.ownerUid is string && data.ownerUid == request.auth.uid))
+        && data.transactionId is string && isValidId(data.transactionId)
+        && data.transactionType is string && data.transactionType in ["DR", "CR"]
+        && data.amountMinor is int && data.amountMinor >= 0
+        && data.description is string && data.description.size() <= 500
+        && (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time));
+    }
+
+    function isValidAuditorCheck(data) {
+      return data.checkId is string && isValidId(data.checkId)
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 64
+        && data.auditorUid is string && data.auditorUid.size() >= 1 && data.auditorUid.size() <= 128
+        && data.auditorStaffId is string && data.auditorStaffId.size() >= 1 && data.auditorStaffId.size() <= 64
+        && (!('auditorName' in data) || (data.auditorName is string && data.auditorName.size() <= 120))
+        && data.businessDate is int
+        && data.openingBalanceMinor is int && data.openingBalanceMinor >= 0
+        && data.totalDRMinor is int && data.totalDRMinor >= 0
+        && data.totalCRMinor is int && data.totalCRMinor >= 0
+        && data.expectedEndingMinor is int
+        && (!('cashierCountedMinor' in data) || data.cashierCountedMinor is int)
+        && (!('differenceMinor' in data) || data.differenceMinor is int)
+        && data.checkStatus is string && data.checkStatus in ["BALANCED", "SHORTAGE", "EXCESS", "PENDING_CASHIER"]
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && (!('appliedByCashier' in data) || data.appliedByCashier is bool)
+        && (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time))
+        && (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    match /cashSessions/{sessionId} {
+
+      allow get: if isManagerOrAdmin()
+        || (isActiveUser()
+          && (resource == null || resource.data.branchId == userProfile().branchId));
+
+      allow list: if isManagerOrAdmin()
+        || (isActiveUser() && existing().branchId == userProfile().branchId);
+
+      allow create: if isSignedIn()
+        && isValidId(sessionId)
+        && isValidCashSession(incoming())
+        && incoming().sessionId == sessionId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().status in ["DRAFT", "CLOSED"]
+        && incoming().createdAt is timestamp
+        && incoming().createdAt <= request.time
+        && activeCashier(incoming().branchId)
+        && incoming().staffId == userProfile().staffId;
+
+      allow update: if isSignedIn()
+        && isValidId(sessionId)
+        && isValidCashSession(incoming())
+        && incoming().branchId == existing().branchId
+        && incoming().sessionId == existing().sessionId
+        && (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt)
+        && (
+          (
+            activeCashier(existing().branchId)
+            && incoming().staffId == userProfile().staffId
+            && (!('ownerUid' in existing()) || existing().ownerUid == request.auth.uid || userProfile().branchId == existing().branchId)
+            && incoming().status in ["DRAFT", "CLOSED"]
+            && incoming().isApproved == false
+          ) ||
+          (
+            activeApprover(existing().branchId)
+            && existing().status == "CLOSED"
+            && incoming().status == "CLOSED"
+            && incoming().staffId == existing().staffId
+            && incoming().isApproved == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['isApproved', 'approvedBy', 'approvalTimestamp', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+
+      match /denominations/{id} {
+        allow get: if isManagerOrAdmin()
+          || (isActiveUser()
+            && (
+              resource == null
+              || resource.data.branchId == userProfile().branchId
+              || get(/databases/$(database)/documents/cashSessions/$(sessionId)).data.branchId == userProfile().branchId
+            ));
+        allow list: if isManagerOrAdmin()
+          || (isActiveUser()
+            && (
+              existing().branchId == userProfile().branchId
+              || get(/databases/$(database)/documents/cashSessions/$(sessionId)).data.branchId == userProfile().branchId
+            ));
+        allow create, update: if isSignedIn()
+          && isValidId(id)
+          && isValidDenomination(incoming())
+          && activeCashier(incoming().branchId)
+          && incoming().staffId == userProfile().staffId
+          && existsAfter(/databases/$(database)/documents/cashSessions/$(sessionId))
+          && getAfter(/databases/$(database)/documents/cashSessions/$(sessionId)).data.branchId == incoming().branchId;
+        allow delete: if false;
+      }
+
+      match /transactions/{id} {
+        allow get: if isManagerOrAdmin()
+          || (isActiveUser()
+            && (
+              resource == null
+              || resource.data.branchId == userProfile().branchId
+              || get(/databases/$(database)/documents/cashSessions/$(sessionId)).data.branchId == userProfile().branchId
+            ));
+        allow list: if isManagerOrAdmin()
+          || (isActiveUser()
+            && (
+              existing().branchId == userProfile().branchId
+              || get(/databases/$(database)/documents/cashSessions/$(sessionId)).data.branchId == userProfile().branchId
+            ));
+        allow create, update: if isSignedIn()
+          && isValidId(id)
+          && isValidTransaction(incoming())
+          && activeCashier(incoming().branchId)
+          && incoming().staffId == userProfile().staffId
+          && existsAfter(/databases/$(database)/documents/cashSessions/$(sessionId))
+          && getAfter(/databases/$(database)/documents/cashSessions/$(sessionId)).data.branchId == incoming().branchId;
+        allow delete: if false;
+      }
+    }
+
+    match /auditorChecks/{checkId} {
+      allow get: if isManagerOrAdmin()
+        || (isActiveUser()
+          && (resource == null || resource.data.branchId == userProfile().branchId));
+
+      allow list: if isManagerOrAdmin()
+        || (isActiveUser() && existing().branchId == userProfile().branchId);
+
+      allow create: if isSignedIn()
+        && isValidId(checkId)
+        && isValidAuditorCheck(incoming())
+        && incoming().checkId == checkId
+        && incoming().auditorUid == request.auth.uid
+        && incoming().createdAt is timestamp
+        && incoming().createdAt <= request.time
+        && activeAuditor(incoming().branchId);
+
+      allow update: if isSignedIn()
+        && isValidId(checkId)
+        && isValidAuditorCheck(incoming())
+        && incoming().branchId == existing().branchId
+        && incoming().checkId == existing().checkId
+        && (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt)
+        && (
+          (
+            activeAuditor(existing().branchId)
+            && incoming().auditorUid == request.auth.uid
+          ) ||
+          (
+            isActiveUser()
+            && userProfile().branchId == existing().branchId
+            && userProfile().role in ["CASHIER", "CSO"]
+            && incoming().diff(existing()).affectedKeys().hasOnly(['appliedByCashier', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(uid)
+        && isValidUser(incoming())
+        && (
+          isAdmin()
+          || (
+            request.auth.uid == uid
+            && (
+              (isAdminByEmail() && incoming().role == "ADMIN" && incoming().active == true)
+              || (incoming().role in ["CASHIER", "CSO"] && incoming().active == false)
+            )
+          )
+        );
+      allow update: if isSignedIn()
+        && isValidId(uid)
+        && isValidUser(incoming())
+        && (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt)
+        && (
+          isAdmin()
+          || (
+            request.auth.uid == uid
+            && isAdminByEmail()
+            && incoming().role == "ADMIN"
+            && incoming().active == true
+          )
+          || (
+            request.auth.uid == uid
+            && (!('role' in existing()) || incoming().role == existing().role)
+            && (!('active' in existing()) || incoming().active == existing().active)
+            && (!('branchId' in existing()) || incoming().branchId == existing().branchId)
+            && (!('staffId' in existing()) || incoming().staffId == existing().staffId)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'fullName',
+              'email',
+              'photoBase64',
+              'biometricEnabled',
+              'requireBiometricOnSubmit',
+              'autoLockTimeoutMinutes',
+              'updatedAt'
+            ])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /branches/{branchId} {
+      allow get: if isManagerOrAdmin()
+        || (isActiveUser() && userProfile().branchId == branchId);
+      allow list: if isManagerOrAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow get, list: if isManagerOrAdmin()
+        || (isActiveUser() && existing().branchId == userProfile().branchId);
+      allow write: if false;
+    }
+  }
+}
