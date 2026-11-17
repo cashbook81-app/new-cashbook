@@ -29,7 +29,7 @@ android {
     versionName = resolvedVersionName
     val resolvedGitHubRepo = ((project.findProperty("GITHUB_RELEASE_REPO") as String?)
       ?: System.getenv("GITHUB_RELEASE_REPO")
-      ?: "")
+      ?: "cashbook81-app/new-cashbook")
       .trim()
       .replace("\"", "\\\"")
     buildConfigField("String", "GITHUB_RELEASE_REPO", "\"$resolvedGitHubRepo\"")
