@@ -2,6 +2,9 @@ name: Release Android APK
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*"
   workflow_dispatch:
@@ -9,6 +12,7 @@ on:
       version_name:
         description: "Release version (e.g. 1.0.1). Leave blank to auto-increment build number."
         required: false
+        type: string
         default: ""
       build_type:
         description: "APK build type"
@@ -38,6 +42,21 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses & install SDK 36.1
+        run: |
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          mkdir -p "$SDK_DIR/licenses"
+          for hash in 24333f8a63b6825ea9c5514f83c2829b004d1fee 8933bad161af4178b1185d1a37fbf41ea5269c55 d56f5187479451eabf01fb78af6dfcb131a6481e; do
+            grep -qxF "$hash" "$SDK_DIR/licenses/android-sdk-license" 2>/dev/null || echo "$hash" >> "$SDK_DIR/licenses/android-sdk-license"
+          done
+          grep -qxF "84831b9409646a918e30573bab4c9c91346d8abd" "$SDK_DIR/licenses/android-sdk-preview-license" 2>/dev/null || echo "84831b9409646a918e30573bab4c9c91346d8abd" >> "$SDK_DIR/licenses/android-sdk-preview-license"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          sdkmanager "platforms;android-36.1" || true
+
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -46,9 +65,11 @@ jobs:
       - name: Compute semantic version & signing mode
         id: version
         env:
-          INPUT_VERSION: ${{ github.event.inputs.version_name }}
-          INPUT_BUILD_TYPE: ${{ github.event.inputs.build_type }}
-          HAS_RELEASE_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
+          INPUT_VERSION: ${{ inputs.version_name }}
+          INPUT_BUILD_TYPE: ${{ inputs.build_type }}
+          SECRET_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
+          SECRET_STORE_PW: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PW: ${{ secrets.KEY_PASSWORD }}
         run: |
           RAW_VER="${INPUT_VERSION}"
           if [ -z "$RAW_VER" ]; then
@@ -64,12 +85,17 @@ jobs:
           CORE="${RAW_VER%%-*}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CORE"
           if [[ "$MAJOR" =~ ^[0-9]+$ ]] && [[ "${MINOR:-0}" =~ ^[0-9]+$ ]] && [[ "${PATCH:-0}" =~ ^[0-9]+$ ]]; then
-            VERSION_CODE=$(( 10#$MAJOR * 10000 + 10#${MINOR:-0} * 100 + 10#${PATCH:-0} ))
+            VERSION_CODE=$(( 10#$MAJOR * 1000000 + 10#${MINOR:-0} * 1000 + 10#${PATCH:-0} ))
           else
             VERSION_CODE=$(( GITHUB_RUN_NUMBER ))
           fi
           if [ "$VERSION_CODE" -lt 1 ]; then
             VERSION_CODE=1
+          fi
+
+          HAS_RELEASE_KEYSTORE="false"
+          if [ -n "$SECRET_KEYSTORE" ] && [ -n "$SECRET_STORE_PW" ] && [ -n "$SECRET_KEY_PW" ]; then
+            HAS_RELEASE_KEYSTORE="true"
           fi
 
           if [ "${INPUT_BUILD_TYPE}" = "release" ]; then
@@ -110,7 +136,12 @@ jobs:
             --tests "com.example.update.*" \
             --tests "com.example.ui.*" \
             --tests "com.example.ExampleRobolectricTest" \
-            --tests "com.example.ExampleUnitTest"
+            --tests "com.example.ExampleUnitTest" \
+            -PAPP_VERSION_CODE=${{ steps.version.outputs.version_code }} \
+            -PAPP_VERSION_NAME=${{ steps.version.outputs.version_name }} \
+            -PGITHUB_RELEASE_REPO=${{ github.repository }} \
+            -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" \
+            --stacktrace
 
       - name: Build release APK
         if: steps.version.outputs.signing_mode == 'release'
@@ -122,7 +153,9 @@ jobs:
           gradle assembleRelease \
             -PAPP_VERSION_CODE=${{ steps.version.outputs.version_code }} \
             -PAPP_VERSION_NAME=${{ steps.version.outputs.version_name }} \
-            -PGITHUB_RELEASE_REPO=${{ github.repository }}
+            -PGITHUB_RELEASE_REPO=${{ github.repository }} \
+            -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" \
+            --stacktrace
 
       - name: Build debug APK (fallback when release signing secrets are not set)
         if: steps.version.outputs.signing_mode == 'debug'
@@ -130,7 +163,9 @@ jobs:
           gradle assembleDebug \
             -PAPP_VERSION_CODE=${{ steps.version.outputs.version_code }} \
             -PAPP_VERSION_NAME=${{ steps.version.outputs.version_name }} \
-            -PGITHUB_RELEASE_REPO=${{ github.repository }}
+            -PGITHUB_RELEASE_REPO=${{ github.repository }} \
+            -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" \
+            --stacktrace
 
       - name: Prepare versioned APK asset
         id: apk
@@ -157,6 +192,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version_name }}
+          target_commitish: ${{ github.sha }}
           name: Cash Control v${{ steps.version.outputs.version_name }}
           files: ${{ steps.apk.outputs.apk_path }}
           generate_release_notes: true
