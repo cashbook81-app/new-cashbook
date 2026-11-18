@@ -18,6 +18,7 @@ import com.example.data.repository.buildAuditorCheckId
 import com.example.data.repository.buildDailySessionId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -148,6 +149,8 @@ data class CashCalculatorUiState(
     val latestAuditorCheckForDate: AuditorCheckDto? = null,
     val auditorNotificationMessage: String? = null,
     val appliedAuditorCheckId: String? = null,
+    val pendingAuditorDrCrPopup: AuditorCheckDto? = null,
+    val pendingAuditorClosingPopup: CashSession? = null,
     val isSubmittingAuditorCheck: Boolean = false,
     val auditorSubmitNotice: String? = null,
     val error: String? = null
@@ -176,6 +179,11 @@ data class CashCalculatorUiState(
     }
 }
 
+sealed interface BankAlertEvent {
+    data class AuditorDrCrForCashier(val check: AuditorCheckDto) : BankAlertEvent
+    data class BalancedClosingForAuditor(val session: CashSession) : BankAlertEvent
+}
+
 class CashViewModel(
     private val repository: CashSessionRepository,
     private val securityManager: SecurityManager? = null
@@ -184,11 +192,25 @@ class CashViewModel(
     private val _uiState = MutableStateFlow(CashCalculatorUiState())
     val uiState: StateFlow<CashCalculatorUiState> = _uiState.asStateFlow()
 
+    private val _bankAlertEvents = MutableSharedFlow<BankAlertEvent>(extraBufferCapacity = 8)
+    val bankAlertEvents: SharedFlow<BankAlertEvent> = _bankAlertEvents.asSharedFlow()
+
     private val _activeBranchId = MutableStateFlow<String?>(null)
     private val _activeRole = MutableStateFlow(StaffRole.CASHIER)
     private var activeUserId: String = ""
     private var initializedKey: String? = null
-    private var lastAutoAppliedAuditorSignature: String? = null
+    private var remoteSessionSyncJob: Job? = null
+    private val seenInSessionAlertKeys = mutableSetOf<String>()
+    private val persistedAcknowledgedKeys = mutableSetOf<String>()
+
+    private fun isMultiBranchRole(role: StaffRole): Boolean =
+        role == StaffRole.MANAGER || role == StaffRole.HEAD_OFFICE || role == StaffRole.ADMIN
+
+    private fun drCrAlertKey(check: AuditorCheckDto): String =
+        "DRCR|${check.checkId}|${check.totalDRMinor}|${check.totalCRMinor}"
+
+    private fun closingAlertKey(session: CashSession): String =
+        "CLOSING|${session.sessionId}|v${session.version}|${session.openingBalanceMinor}|${session.totalDRMinor}|${session.totalCRMinor}|${session.totalCountedMinor}"
 
     private fun dayKey(millis: Long): String =
         SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(millis))
@@ -197,7 +219,7 @@ class CashViewModel(
     val sessionHistory: StateFlow<List<CashSession>> = combine(_activeBranchId, _activeRole) { branchId, role ->
         branchId to role
     }.flatMapLatest { (branchId, role) ->
-        if (role == StaffRole.MANAGER || role == StaffRole.ADMIN) {
+        if (isMultiBranchRole(role)) {
             repository.getAllSessions()
         } else if (branchId.isNullOrBlank()) {
             flowOf(emptyList())
@@ -210,7 +232,7 @@ class CashViewModel(
     val branchAuditorChecks: StateFlow<List<AuditorCheckDto>> = combine(_activeBranchId, _activeRole) { branchId, role ->
         branchId to role
     }.flatMapLatest { (branchId, role) ->
-        if (role == StaffRole.MANAGER || role == StaffRole.ADMIN) {
+        if (isMultiBranchRole(role)) {
             repository.observeAllAuditorChecks()
         } else if (branchId.isNullOrBlank()) {
             flowOf(emptyList())
@@ -236,11 +258,61 @@ class CashViewModel(
                 }
                 _uiState.update { it.copy(latestAuditorCheckForDate = matchingCheck) }
 
-                if (role == StaffRole.CASHIER && matchingCheck != null) {
-                    val signature = "${matchingCheck.checkId}|${matchingCheck.totalDRMinor}|${matchingCheck.totalCRMinor}|${matchingCheck.appliedByCashier}"
-                    if (!matchingCheck.appliedByCashier && signature != lastAutoAppliedAuditorSignature) {
-                        lastAutoAppliedAuditorSignature = signature
-                        applyAuditorCheckToCashier(matchingCheck, showNotification = true)
+                if (role == StaffRole.CASHIER && matchingCheck != null && !matchingCheck.appliedByCashier) {
+                    val key = drCrAlertKey(matchingCheck)
+                    if (key !in seenInSessionAlertKeys && key !in persistedAcknowledgedKeys) {
+                        seenInSessionAlertKeys.add(key)
+                        _uiState.update { it.copy(pendingAuditorDrCrPopup = matchingCheck) }
+                        _bankAlertEvents.tryEmit(BankAlertEvent.AuditorDrCrForCashier(matchingCheck))
+                    }
+                } else if (matchingCheck == null || matchingCheck.appliedByCashier) {
+                    _uiState.update { current ->
+                        if (current.pendingAuditorDrCrPopup != null &&
+                            (matchingCheck == null || current.pendingAuditorDrCrPopup.checkId == matchingCheck.checkId)
+                        ) {
+                            current.copy(pendingAuditorDrCrPopup = null)
+                        } else {
+                            current
+                        }
+                    }
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            combine(
+                sessionHistory,
+                _activeBranchId,
+                _activeRole
+            ) { sessions, branchId, role ->
+                Triple(sessions, branchId.orEmpty(), role)
+            }.collect { (sessions, branchId, role) ->
+                if (role == StaffRole.AUDITOR && branchId.isNotBlank()) {
+                    val balancedClosed = sessions
+                        .filter { s ->
+                            s.branchId.equals(branchId, ignoreCase = true) &&
+                                s.status == "CLOSED" &&
+                                s.isFinal &&
+                                s.reconciliationStatus == "BALANCED" &&
+                                !s.isApproved
+                        }
+                        .maxByOrNull { it.businessDate }
+
+                    if (balancedClosed != null) {
+                        val key = closingAlertKey(balancedClosed)
+                        if (key !in seenInSessionAlertKeys && key !in persistedAcknowledgedKeys) {
+                            seenInSessionAlertKeys.add(key)
+                            _uiState.update { it.copy(pendingAuditorClosingPopup = balancedClosed) }
+                            _bankAlertEvents.tryEmit(BankAlertEvent.BalancedClosingForAuditor(balancedClosed))
+                        }
+                    } else {
+                        _uiState.update { current ->
+                            if (current.pendingAuditorClosingPopup != null) {
+                                current.copy(pendingAuditorClosingPopup = null)
+                            } else {
+                                current
+                            }
+                        }
                     }
                 }
             }
@@ -266,7 +338,34 @@ class CashViewModel(
         val isFirstForKey = initializedKey != sessionKey
         initializedKey = sessionKey
 
+        if (isFirstForKey) {
+            seenInSessionAlertKeys.clear()
+            _uiState.update {
+                it.copy(
+                    pendingAuditorDrCrPopup = null,
+                    pendingAuditorClosingPopup = null
+                )
+            }
+            remoteSessionSyncJob?.cancel()
+            remoteSessionSyncJob = viewModelScope.launch(Dispatchers.IO) {
+                val flow = if (isMultiBranchRole(role)) {
+                    repository.observeRemoteAllSessions()
+                } else if (branchId.isNotBlank()) {
+                    repository.observeRemoteSessionsForBranch(branchId)
+                } else {
+                    emptyFlow()
+                }
+                flow.collect()
+            }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
+            if (isFirstForKey) {
+                val persisted = securityManager?.getAcknowledgedAlertKeys(userId).orEmpty()
+                if (persisted.isNotEmpty()) {
+                    persistedAcknowledgedKeys.addAll(persisted)
+                }
+            }
             if (isFirstForKey && role == StaffRole.CASHIER && !_uiState.value.hasAnyDenominationCounts()) {
                 val savedWorking = securityManager?.getWorkingCounts(userId)
                 if (savedWorking != null && savedWorking.hasNonZeroCounts()) {
@@ -279,7 +378,7 @@ class CashViewModel(
                 if (role == StaffRole.CASHIER) {
                     repository.syncPendingSessions()
                 }
-                if (role == StaffRole.MANAGER || role == StaffRole.ADMIN) {
+                if (isMultiBranchRole(role)) {
                     repository.syncAllBranchesFromFirestore()
                 } else if (branchId.isNotBlank()) {
                     repository.syncFromFirestore(branchId)
@@ -302,6 +401,10 @@ class CashViewModel(
         val drBirr = check.totalDRMinor / 100.0
         val crBirr = check.totalCRMinor / 100.0
         val auditorLabel = check.auditorName.ifBlank { check.auditorStaffId.ifBlank { "Auditor" } }
+        val key = drCrAlertKey(check)
+        seenInSessionAlertKeys.add(key)
+        persistedAcknowledgedKeys.add(key)
+
         _uiState.update { state ->
             val drId = state.drTransactions.firstOrNull()?.id ?: UUID.randomUUID().toString()
             val crId = state.crTransactions.firstOrNull()?.id ?: UUID.randomUUID().toString()
@@ -310,18 +413,49 @@ class CashViewModel(
                 drTransactions = listOf(TransactionEntry(id = drId, type = "DR", amountBirr = drBirr)),
                 crTransactions = listOf(TransactionEntry(id = crId, type = "CR", amountBirr = crBirr)),
                 appliedAuditorCheckId = check.checkId,
+                pendingAuditorDrCrPopup = null,
                 auditorNotificationMessage = if (showNotification) {
-                    "$auditorLabel verified today's DR/CR (${check.checkStatus}). DR & CR applied automatically."
+                    "$auditorLabel verified DR & CR. Filled into today's transactions."
                 } else {
                     state.auditorNotificationMessage
                 }
             )
         }
-        if (!check.appliedByCashier) {
-            viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityManager?.markAlertKeyAcknowledged(activeUserId, key)
+            if (!check.appliedByCashier) {
                 repository.markAuditorCheckApplied(check.checkId)
             }
         }
+    }
+
+    fun acceptAuditorDrCrPopup(check: AuditorCheckDto) {
+        applyAuditorCheckToCashier(check, showNotification = true)
+    }
+
+    fun dismissAuditorDrCrPopup(check: AuditorCheckDto) {
+        val key = drCrAlertKey(check)
+        seenInSessionAlertKeys.add(key)
+        persistedAcknowledgedKeys.add(key)
+        _uiState.update { it.copy(pendingAuditorDrCrPopup = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            securityManager?.markAlertKeyAcknowledged(activeUserId, key)
+        }
+    }
+
+    fun dismissAuditorClosingPopup(session: CashSession) {
+        val key = closingAlertKey(session)
+        seenInSessionAlertKeys.add(key)
+        persistedAcknowledgedKeys.add(key)
+        _uiState.update { it.copy(pendingAuditorClosingPopup = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            securityManager?.markAlertKeyAcknowledged(activeUserId, key)
+        }
+    }
+
+    fun approveAuditorClosingPopup(session: CashSession, approvedBy: String) {
+        dismissAuditorClosingPopup(session)
+        approveSession(session.sessionId, approvedBy)
     }
 
     fun dismissAuditorNotification() {
@@ -403,7 +537,7 @@ class CashViewModel(
             if (role == StaffRole.CASHIER) {
                 repository.syncPendingSessions()
             }
-            val result = if (role == StaffRole.MANAGER || role == StaffRole.ADMIN) {
+            val result = if (isMultiBranchRole(role)) {
                 repository.syncAllBranchesFromFirestore()
             } else {
                 repository.syncFromFirestore(branchId)
@@ -411,7 +545,7 @@ class CashViewModel(
             _uiState.update { state ->
                 state.copy(
                     isSyncingHistory = false,
-                    historyNotice = if (result.isSuccess) "History synced with Firestore." else null,
+                    historyNotice = if (result.isSuccess) "Branch history updated." else null,
                     error = result.exceptionOrNull()?.localizedMessage
                 )
             }
@@ -595,7 +729,7 @@ class CashViewModel(
                             val dateStr = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
                                 .format(java.util.Date(closing.businessDateMillis))
                             val statusMsg = if (result.fromOfflineCache) {
-                                "Cached approved closing ($dateStr) is already loaded."
+                                "Saved approved closing ($dateStr) is already loaded."
                             } else {
                                 "Latest approved closing ($dateStr) is already loaded."
                             }
@@ -628,9 +762,9 @@ class CashViewModel(
 
                     is PreviousClosingFetchResult.NotFound -> {
                         val msg = if (!result.cloudSynced) {
-                            "Offline mode: no cached approved closing found for $branchId. Enter starting float manually or reconnect to sync."
+                            "Offline mode: no saved closing found for $branchId. Enter opening balance manually."
                         } else {
-                            "No prior approved closing found for $branchId. Enter starting float manually."
+                            "No prior approved closing found for $branchId. Enter opening balance manually."
                         }
                         val statusType = if (!result.cloudSynced) {
                             PreviousBalanceStatusType.WARNING_OFFLINE
@@ -693,12 +827,12 @@ class CashViewModel(
         val status = if (metadata.isOfflineCached) {
             PreviousBalanceStatus(
                 type = PreviousBalanceStatusType.WARNING_OFFLINE,
-                message = "Loaded cached approved closing from $dateStr (offline mode)."
+                message = "Loaded saved closing from $dateStr (offline mode)."
             )
         } else {
             PreviousBalanceStatus(
                 type = PreviousBalanceStatusType.SUCCESS,
-                message = "Approved closing from $dateStr synced & loaded."
+                message = "Approved closing from $dateStr loaded."
             )
         }
         _uiState.update {

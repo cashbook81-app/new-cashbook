@@ -91,6 +91,8 @@ interface CashSessionRepository {
     suspend fun trySyncSession(sessionId: String): Result<Unit>
     suspend fun syncFromFirestore(branchId: String): Result<Unit>
     suspend fun syncAllBranchesFromFirestore(): Result<Unit> = Result.success(Unit)
+    fun observeRemoteSessionsForBranch(branchId: String): Flow<Unit> = emptyFlow()
+    fun observeRemoteAllSessions(): Flow<Unit> = emptyFlow()
     suspend fun getLatestApprovedBalance(branchId: String): Long?
     suspend fun fetchLatestApprovedClosing(branchId: String): PreviousClosingFetchResult
     suspend fun getLatestSavedDenominations(branchId: String): List<CashDenomination>
@@ -353,6 +355,35 @@ class CashRepository(
         }
     }
 
+    override fun observeRemoteSessionsForBranch(branchId: String): Flow<Unit> {
+        if (branchId.isBlank() || auth.currentUser?.uid == null) return emptyFlow()
+        return db.collection("cashSessions")
+            .whereEqualTo("branchId", branchId)
+            .snapshots()
+            .map { snap ->
+                ingestSessionsSnapshot(snap, fallbackBranchId = branchId)
+            }
+            .catch { error ->
+                if (error is CancellationException) throw error
+                handleFirestoreError(error, OperationType.LIST, "cashSessions")
+                Log.w("CashRepository", "Realtime branch session listener stopped for $branchId", error)
+            }
+    }
+
+    override fun observeRemoteAllSessions(): Flow<Unit> {
+        if (auth.currentUser?.uid == null) return emptyFlow()
+        return db.collection("cashSessions")
+            .snapshots()
+            .map { snap ->
+                ingestSessionsSnapshot(snap, fallbackBranchId = "")
+            }
+            .catch { error ->
+                if (error is CancellationException) throw error
+                handleFirestoreError(error, OperationType.LIST, "cashSessions")
+                Log.w("CashRepository", "Realtime all-branch session listener stopped", error)
+            }
+    }
+
     private suspend fun ingestSessionsSnapshot(snapshot: QuerySnapshot, fallbackBranchId: String) {
         // Keep only the latest updated/version session per (branchId, dayKey) so Room never accumulates duplicates
         val docsByBranchAndDay = snapshot.documents
@@ -491,7 +522,7 @@ class CashRepository(
             cloudSynced = syncResult.isSuccess
             cloudError = syncResult.exceptionOrNull()?.localizedMessage
         } else {
-            cloudError = "Not signed in to cloud sync."
+            cloudError = "Sign in required to load branch records."
         }
 
         val session = cashDao.getLatestApprovedSession(branchId)

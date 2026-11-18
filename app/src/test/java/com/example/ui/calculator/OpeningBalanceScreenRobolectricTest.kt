@@ -24,6 +24,7 @@ import com.example.data.repository.CashRepository
 import com.example.data.repository.CashSessionRepository
 import com.example.data.repository.PreviousApprovedClosingInfo
 import com.example.data.repository.PreviousClosingFetchResult
+import com.example.data.repository.UserRepository
 import com.example.ui.auth.ProfileScreen
 import com.example.ui.auth.WelcomeScreen
 import com.example.ui.history.HistoryScreen
@@ -477,14 +478,77 @@ class OpeningBalanceScreenRobolectricTest {
                         staffId = "CSO01",
                         branchId = "SODO DACHI",
                         role = "CSO"
-                    )
+                    ),
+                    userRepository = UserRepository(FirebaseFirestore.getInstance())
                 )
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Account & Vault Security").assertIsDisplayed()
-        composeRule.onNodeWithText("ACCOUNT & SESSION").assertIsDisplayed()
+        composeRule.onNodeWithText("VAULT SECURITY").assertIsDisplayed()
+        composeRule.onNodeWithTag("edit_profile_button").assertIsDisplayed()
+        composeRule.onNodeWithText("Account & Vault Security").assertDoesNotExist()
+        composeRule.onNodeWithText("ACCOUNT & SESSION").assertDoesNotExist()
         composeRule.onNodeWithTag("profile_merchant_portal_row").assertDoesNotExist()
         composeRule.onNodeWithText("SouqPass Merchant Portal").assertDoesNotExist()
+    }
+
+    @Test
+    fun ui_step2AndStep3_showHeaderTotalsAndOmitBottomFooters() {
+        val viewModel = CashViewModel(FakeUiCashRepository())
+        viewModel.updateBundleEntry(0, bundles = 2, notesPerBundle = 1000, looseNotes = 0)
+        viewModel.updatePettyQuantity(0, quantity = 3)
+        viewModel.setStep(2)
+        launchCalculator(viewModel)
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Bundle Cash").assertIsDisplayed()
+        composeRule.onNodeWithTag("bundle_cash_header_total")
+            .assertIsDisplayed()
+            .assertTextContains("ETB 400,000.00")
+        composeRule.onNodeWithText("Bundle Cash Total").assertDoesNotExist()
+
+        viewModel.setStep(3)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Petty Cash").assertIsDisplayed()
+        composeRule.onNodeWithTag("petty_cash_header_total")
+            .assertIsDisplayed()
+            .assertTextContains("ETB 600.00")
+        composeRule.onNodeWithTag("bundle_summary_header_total")
+            .assertIsDisplayed()
+            .assertTextContains("ETB 400,000.00")
+        composeRule.onNodeWithTag("combined_cash_header_total")
+            .assertIsDisplayed()
+            .assertTextContains("ETB 400,600.00")
+        composeRule.onNodeWithText("Total Cash").assertDoesNotExist()
+    }
+
+    @Test
+    fun ui_closingPage_showsReadOnlyDateCleanNumberFormatAndBreakdown() {
+        val viewModel = CashViewModel(FakeUiCashRepository())
+        viewModel.onOpeningBalanceTextChanged("100000.00")
+        viewModel.updateBundleEntry(0, bundles = 0, notesPerBundle = 1000, looseNotes = 0)
+        viewModel.updatePettyQuantity(0, quantity = 250) // 250 x 200 = ETB 50,000.00 counted -> -ETB 50,000.00 variance
+        viewModel.setStep(5)
+        launchCalculator(viewModel)
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("closing_business_date_badge").assertIsDisplayed()
+        composeRule.onNodeWithText("Change").assertDoesNotExist()
+        composeRule.onNodeWithTag("business_date_picker_row").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("closing_counted_summary_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("closing_total_counted_value")
+            .assertIsDisplayed()
+            .assertTextContains("ETB 50,000.00")
+        composeRule.onNodeWithTag("closing_reconciliation_card")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("closing_variance_card")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("closing_variance_amount")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertTextContains("-ETB 50,000.00")
     }
 }

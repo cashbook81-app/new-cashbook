@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.FactCheck
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -33,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -58,30 +58,35 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import com.example.data.local.SecurityManager
 import com.example.ui.theme.AmberAccent
+import com.example.ui.theme.AmberSoftTint
 import com.example.ui.theme.CyanBorder
 import com.example.ui.theme.CyanBright
 import com.example.ui.theme.CyanDeep
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanSoftTint
+import com.example.ui.theme.DangerBorder
 import com.example.ui.theme.DangerRed
+import com.example.ui.theme.DangerSoftTint
 import com.example.ui.theme.IceSurface
 import com.example.ui.theme.MutedNavyText
 import com.example.ui.theme.NavyText
 import com.example.ui.theme.PlusJakartaSansFontFamily
 import com.example.ui.theme.SoftSurfaceVariant
 import com.example.ui.theme.SubtleOutline
+import com.example.ui.theme.SuccessBorder
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.SuccessSoftTint
 import com.example.ui.theme.VaultSlateDeep
 import com.example.ui.theme.White
 import com.example.ui.util.formatAmount
 import com.example.ui.util.formatBirr
 import com.example.ui.util.formatDenomination
+import com.example.ui.util.formatSignedBirr
 import com.example.ui.viewmodel.CashCalculatorUiState
 import com.example.ui.viewmodel.CashViewModel
 import com.example.ui.viewmodel.EtbParseResult
 import com.example.ui.viewmodel.formatMinorAsFixedTwoDecimals
 import com.example.ui.viewmodel.parseAndValidateEtbInput
-import com.example.ui.viewmodel.utcDateMillisToLocalMidnight
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -250,8 +255,8 @@ fun CashCalculatorScreen(
                             rawText = openingRawText,
                             onRawTextChanged = { openingRawText = it }
                         )
-                        2 -> Step2BundleCash(uiState, viewModel, isKeyboardVisible)
-                        3 -> Step3PettyCash(uiState, viewModel, isKeyboardVisible)
+                        2 -> Step2BundleCash(uiState, viewModel)
+                        3 -> Step3PettyCash(uiState, viewModel)
                         4 -> Step4SystemVerification(uiState, viewModel)
                         5 -> Step5SaveConfirmation(
                             state = uiState,
@@ -284,9 +289,9 @@ fun CashCalculatorScreen(
             text = {
                 Text(
                     text = if (uiState.saveWasUpdate) {
-                        "Updated this working day's calculation in History & Firestore with your latest numbers."
+                        "Updated this working day's calculation in History with your latest numbers."
                     } else {
-                        "Cash session and balance saved to History & Firestore."
+                        "Cash session and balance saved to History."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MutedNavyText
@@ -333,49 +338,58 @@ private fun FintechCalculatorHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
                         text = "CASH CONTROL",
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = MaterialTheme.typography.titleSmall.copy(
                             fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 16.sp,
-                            letterSpacing = 0.6.sp
+                            fontSize = 13.5.sp,
+                            letterSpacing = 0.5.sp
                         ),
                         fontWeight = FontWeight.ExtraBold,
-                        color = VaultSlateDeep
+                        color = VaultSlateDeep,
+                        maxLines = 1
                     )
                     Text(
-                        text = "Step $currentStep of ${StepLabels.size} · ${StepLabels[(currentStep - 1).coerceIn(0, StepLabels.lastIndex)]}",
+                        text = "· $currentStep/${StepLabels.size} ${StepLabels[(currentStep - 1).coerceIn(0, StepLabels.lastIndex)]}",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        color = MutedNavyText
+                        color = MutedNavyText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = CyanSoftTint,
-                    border = BorderStroke(1.dp, CyanBorder)
-                ) {
-                    Text(
-                        text = branchId,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = CyanDeep,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                if (branchId.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = CyanSoftTint,
+                        border = BorderStroke(1.dp, CyanBorder)
+                    ) {
+                        Text(
+                            text = branchId,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = CyanDeep,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                    .padding(start = 14.dp, end = 14.dp, bottom = 5.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 for (stepIndex in 1..StepLabels.size) {
@@ -384,7 +398,7 @@ private fun FintechCalculatorHeader(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(2.5.dp)
+                            .height(2.dp)
                             .clip(RoundedCornerShape(2.dp))
                             .background(
                                 when {
@@ -560,8 +574,7 @@ fun TableFooterNavigation(
 @Composable
 fun Step2BundleCash(
     state: CashCalculatorUiState,
-    viewModel: CashViewModel,
-    isKeyboardVisible: Boolean = false
+    viewModel: CashViewModel
 ) {
     val activeNotesPerBundle = state.bundleDenominations.firstOrNull()?.notesPerBundle ?: 1000
     var showBundleConfigDialog by remember { mutableStateOf(false) }
@@ -573,68 +586,110 @@ fun Step2BundleCash(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(14.dp),
             color = White,
             shadowElevation = 0.dp,
             border = BorderStroke(1.dp, SubtleOutline)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(White)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "Bundle Cash",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 15.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = NavyText
-                        )
-                        if (state.bundleCashTotalMinor > 0L) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Bundle Cash",
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 15.5.sp
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyText
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(5.dp),
+                                    color = SoftSurfaceVariant,
+                                    border = BorderStroke(1.dp, SubtleOutline)
+                                ) {
+                                    Text(
+                                        text = "2/5",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MutedNavyText,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = formatBirr(state.bundleCashTotalMinor),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 15.sp,
                                     fontFeatureSettings = "tnum"
                                 ),
-                                fontWeight = FontWeight.SemiBold,
-                                color = CyanPrimary
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CyanPrimary,
+                                modifier = Modifier.testTag("bundle_cash_header_total")
                             )
+                        }
+                        Surface(
+                            onClick = { showBundleConfigDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            color = SoftSurfaceVariant,
+                            border = BorderStroke(1.dp, SubtleOutline),
+                            modifier = Modifier.heightIn(min = 36.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "1 bdl = ×$activeNotesPerBundle",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 11.sp,
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NavyText
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = "Configure bundle notes",
+                                    tint = CyanPrimary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
-                    Surface(
-                        onClick = { showBundleConfigDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        color = SoftSurfaceVariant,
-                        border = BorderStroke(1.dp, SubtleOutline)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(SubtleOutline)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "1 bdl = ×$activeNotesPerBundle",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                fontWeight = FontWeight.SemiBold,
-                                color = NavyText
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Rounded.Tune,
-                                contentDescription = "Configure bundle notes",
-                                tint = CyanPrimary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.4f)
+                                .fillMaxHeight()
+                                .background(CyanPrimary)
+                        )
                     }
                 }
                 HorizontalDivider(color = SubtleOutline)
@@ -680,35 +735,6 @@ fun Step2BundleCash(
                                 thickness = 0.5.dp
                             )
                         }
-                    }
-                }
-
-                if (!isKeyboardVisible) {
-                    HorizontalDivider(color = SubtleOutline)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(SoftSurfaceVariant)
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Bundle Cash Total",
-                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = CyanDeep
-                        )
-                        Text(
-                            text = formatBirr(state.bundleCashTotalMinor),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 14.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = NavyText
-                        )
                     }
                 }
             }
@@ -766,8 +792,7 @@ fun Step2BundleCash(
 @Composable
 fun Step3PettyCash(
     state: CashCalculatorUiState,
-    viewModel: CashViewModel,
-    isKeyboardVisible: Boolean = false
+    viewModel: CashViewModel
 ) {
     val activeRows = remember(state.pettyDenominations) {
         state.pettyDenominations.count { it.quantity > 0 }
@@ -780,55 +805,152 @@ fun Step3PettyCash(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(14.dp),
             color = White,
             shadowElevation = 0.dp,
             border = BorderStroke(1.dp, SubtleOutline)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(White)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "Petty Cash",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 15.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = NavyText
-                        )
-                        if (state.pettyCashTotalMinor > 0L) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Text(
-                                text = formatBirr(state.pettyCashTotalMinor),
+                                text = "Petty Cash",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = PlusJakartaSansFontFamily,
+                                    fontSize = 15.5.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = NavyText
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(5.dp),
+                                color = SoftSurfaceVariant,
+                                border = BorderStroke(1.dp, SubtleOutline)
+                            ) {
+                                Text(
+                                    text = "3/5",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MutedNavyText,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (activeRows > 0) CyanSoftTint else SoftSurfaceVariant,
+                            border = BorderStroke(1.dp, if (activeRows > 0) CyanBorder else SubtleOutline)
+                        ) {
+                            Text(
+                                text = if (activeRows > 0) "$activeRows active" else "${state.pettyDenominations.size} denoms",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 11.sp,
                                     fontFeatureSettings = "tnum"
                                 ),
                                 fontWeight = FontWeight.SemiBold,
-                                color = CyanPrimary
+                                color = if (activeRows > 0) CyanDeep else MutedNavyText,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
+
+                    // 3-part header bar displaying Petty, Bundle, and Combined Total cleanly over table
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (activeRows > 0) CyanSoftTint else SoftSurfaceVariant,
-                        border = BorderStroke(1.dp, if (activeRows > 0) CyanBorder else SubtleOutline)
+                        shape = RoundedCornerShape(10.dp),
+                        color = IceSurface,
+                        border = BorderStroke(1.dp, SubtleOutline),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = if (activeRows > 0) "$activeRows active" else "${state.pettyDenominations.size} denoms",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (activeRows > 0) CyanDeep else MutedNavyText,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            HeaderTotalMetric(
+                                label = "PETTY",
+                                value = formatBirr(state.pettyCashTotalMinor),
+                                valueColor = NavyText,
+                                modifier = Modifier.weight(1f),
+                                testTag = "petty_cash_header_total"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(24.dp)
+                                    .background(SubtleOutline)
+                            )
+                            HeaderTotalMetric(
+                                label = "BUNDLE",
+                                value = formatBirr(state.bundleCashTotalMinor),
+                                valueColor = MutedNavyText,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 6.dp),
+                                testTag = "bundle_summary_header_total"
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = CyanSoftTint,
+                                border = BorderStroke(1.dp, CyanBorder),
+                                modifier = Modifier.weight(1.1f)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Text(
+                                        text = "TOTAL",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            letterSpacing = 0.5.sp
+                                        ),
+                                        fontWeight = FontWeight.Bold,
+                                        color = CyanDeep
+                                    )
+                                    Text(
+                                        text = formatBirr(state.totalCountedMinor),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontFeatureSettings = "tnum"
+                                        ),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = CyanPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.testTag("combined_cash_header_total")
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(SubtleOutline)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.6f)
+                                .fillMaxHeight()
+                                .background(CyanPrimary)
                         )
                     }
                 }
@@ -871,83 +993,44 @@ fun Step3PettyCash(
                         }
                     }
                 }
-
-                if (!isKeyboardVisible) {
-                    HorizontalDivider(color = SubtleOutline)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(SoftSurfaceVariant)
-                            .padding(horizontal = 14.dp, vertical = 9.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Bundle Cash",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
-                                color = MutedNavyText
-                            )
-                            Text(
-                                text = formatBirr(state.bundleCashTotalMinor),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 12.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                fontWeight = FontWeight.SemiBold,
-                                color = NavyText
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Petty Cash",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
-                                color = MutedNavyText
-                            )
-                            Text(
-                                text = formatBirr(state.pettyCashTotalMinor),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 12.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                fontWeight = FontWeight.SemiBold,
-                                color = NavyText
-                            )
-                        }
-                        HorizontalDivider(color = SubtleOutline)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Total Cash",
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = CyanDeep
-                            )
-                            Text(
-                                text = formatBirr(state.totalCountedMinor),
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = PlusJakartaSansFontFamily,
-                                    fontSize = 14.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = NavyText
-                            )
-                        }
-                    }
-                }
             }
         }
+    }
+}
+
+@Composable
+private fun HeaderTotalMetric(
+    label: String,
+    value: String,
+    valueColor: Color,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(1.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 0.4.sp
+            ),
+            fontWeight = FontWeight.Bold,
+            color = MutedNavyText
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = 11.5.sp,
+                fontFeatureSettings = "tnum"
+            ),
+            fontWeight = FontWeight.Bold,
+            color = valueColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag(testTag)
+        )
     }
 }
 
@@ -973,7 +1056,7 @@ private fun DenominationTableHeader(
             fontWeight = FontWeight.Bold,
             color = MutedNavyText,
             textAlign = TextAlign.Start,
-            modifier = Modifier.weight(0.27f),
+            modifier = Modifier.weight(0.22f),
             maxLines = 1
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -986,7 +1069,7 @@ private fun DenominationTableHeader(
             fontWeight = FontWeight.Bold,
             color = MutedNavyText,
             textAlign = TextAlign.Center,
-            modifier = Modifier.weight(0.28f),
+            modifier = Modifier.weight(0.40f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -1000,7 +1083,7 @@ private fun DenominationTableHeader(
             fontWeight = FontWeight.Bold,
             color = MutedNavyText,
             textAlign = TextAlign.End,
-            modifier = Modifier.weight(0.45f),
+            modifier = Modifier.weight(0.38f),
             maxLines = 1
         )
     }
@@ -1042,21 +1125,21 @@ private fun DenominationTableRow(
             .padding(vertical = 3.5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left Column: Clean borderless denomination pill
+        // Left Column: Compact denomination badge
         Box(
             modifier = Modifier
-                .weight(0.27f)
-                .height(36.dp)
+                .weight(0.22f)
+                .height(38.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(if (hasValue) CyanSoftTint.copy(alpha = 0.55f) else SoftSurfaceVariant)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 7.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
                 text = denominationLabel,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 12.5.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     fontFeatureSettings = "tnum"
                 ),
@@ -1068,11 +1151,11 @@ private fun DenominationTableRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Middle Column: Crisp, fast-focus input pill
+        // Middle Column: Wider, well-proportioned quantity box
         Surface(
             modifier = Modifier
-                .weight(0.28f)
-                .height(36.dp),
+                .weight(0.40f)
+                .height(38.dp),
             shape = RoundedCornerShape(8.dp),
             color = inputBg,
             border = BorderStroke(borderWidth, borderColor)
@@ -1082,13 +1165,13 @@ private fun DenominationTableRow(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 6.dp)
+                    .padding(horizontal = 10.dp)
             ) {
                 if (textValue.isEmpty()) {
                     Text(
                         text = "0",
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 13.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.Normal,
                             fontFeatureSettings = "tnum"
                         ),
@@ -1130,28 +1213,34 @@ private fun DenominationTableRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Right Column: Clean borderless right-aligned tabular subtotal
+        // Right Column: Distinct SuccessGreen subtotal readout for instant visual separation
         Column(
             modifier = Modifier
-                .weight(0.45f)
+                .weight(0.38f)
                 .padding(end = 2.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.End
         ) {
             if (subtotalMinor > 0L) {
                 val amountFormatted = formatAmount(subtotalMinor)
-                Text(
-                    text = amountFormatted,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = if (amountFormatted.length > 12) 12.sp else 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFeatureSettings = "tnum"
-                    ),
-                    color = NavyText,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Surface(
+                    shape = RoundedCornerShape(7.dp),
+                    color = SuccessSoftTint.copy(alpha = 0.72f)
+                ) {
+                    Text(
+                        text = amountFormatted,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = if (amountFormatted.length > 11) 11.5.sp else 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFeatureSettings = "tnum"
+                        ),
+                        color = SuccessGreen,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                    )
+                }
             } else {
                 Text(
                     text = "—",
@@ -1225,7 +1314,7 @@ fun Step4SystemVerification(state: CashCalculatorUiState, viewModel: CashViewMod
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.FactCheck,
+                            imageVector = Icons.AutoMirrored.Rounded.FactCheck,
                             contentDescription = "Auditor Verified",
                             tint = CyanDeep,
                             modifier = Modifier.size(16.dp)
@@ -1263,7 +1352,8 @@ fun Step4SystemVerification(state: CashCalculatorUiState, viewModel: CashViewMod
             }
         }
 
-        // Clean single-input DR & CR Card
+        // Clean DR & CR Entry Card
+        val currencyVisual = remember { ThousandsSeparatorVisualTransformation() }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -1284,9 +1374,10 @@ fun Step4SystemVerification(state: CashCalculatorUiState, viewModel: CashViewMod
                             viewModel.setDrAmount(sanitized.toDoubleOrNull() ?: 0.0)
                         }
                     },
-                    label = { Text("DR") },
+                    label = { Text("Cash In · DR (+)") },
                     placeholder = { Text("0.00") },
-                    prefix = { Text("ETB ", fontWeight = FontWeight.Bold, color = SuccessGreen) },
+                    prefix = { Text("ETB ", fontWeight = FontWeight.Bold, color = MutedNavyText) },
+                    visualTransformation = currencyVisual,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                         fontFeatureSettings = "tnum",
@@ -1300,8 +1391,8 @@ fun Step4SystemVerification(state: CashCalculatorUiState, viewModel: CashViewMod
                         unfocusedBorderColor = SubtleOutline,
                         focusedLabelColor = CyanPrimary,
                         unfocusedLabelColor = MutedNavyText,
-                        focusedContainerColor = InputSurfaceTint,
-                        unfocusedContainerColor = InputSurfaceTint,
+                        focusedContainerColor = White,
+                        unfocusedContainerColor = IceSurface,
                         cursorColor = CyanPrimary
                     ),
                     keyboardOptions = KeyboardOptions(
@@ -1324,9 +1415,10 @@ fun Step4SystemVerification(state: CashCalculatorUiState, viewModel: CashViewMod
                             viewModel.setCrAmount(sanitized.toDoubleOrNull() ?: 0.0)
                         }
                     },
-                    label = { Text("CR") },
+                    label = { Text("Cash Out · CR (-)") },
                     placeholder = { Text("0.00") },
-                    prefix = { Text("ETB ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
+                    prefix = { Text("ETB ", fontWeight = FontWeight.Bold, color = MutedNavyText) },
+                    visualTransformation = currencyVisual,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                         fontFeatureSettings = "tnum",
@@ -1340,8 +1432,8 @@ fun Step4SystemVerification(state: CashCalculatorUiState, viewModel: CashViewMod
                         unfocusedBorderColor = SubtleOutline,
                         focusedLabelColor = CyanPrimary,
                         unfocusedLabelColor = MutedNavyText,
-                        focusedContainerColor = InputSurfaceTint,
-                        unfocusedContainerColor = InputSurfaceTint,
+                        focusedContainerColor = White,
+                        unfocusedContainerColor = IceSurface,
                         cursorColor = CyanPrimary
                     ),
                     keyboardOptions = KeyboardOptions(
@@ -1500,7 +1592,6 @@ private fun formatEditableAmount(amountBirr: Double): String {
         .trimEnd('.')
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Step5SaveConfirmation(
     state: CashCalculatorUiState,
@@ -1511,11 +1602,16 @@ fun Step5SaveConfirmation(
     securityManager: SecurityManager
 ) {
     val context = LocalContext.current
-    var showDatePicker by remember { mutableStateOf(false) }
     var showCashBookPreview by remember { mutableStateOf(false) }
     val formattedBusinessDate = remember(state.selectedBusinessDateMillis) {
         SimpleDateFormat("EEE, MMM dd, yyyy", Locale.getDefault())
             .format(Date(state.selectedBusinessDateMillis))
+    }
+
+    val (varianceBg, varianceBorder, varianceColor, varianceTitle) = when (state.reconciliationStatus) {
+        "BALANCED" -> QuadColor(SuccessSoftTint, SuccessBorder, SuccessGreen, "BALANCED")
+        "SHORTAGE" -> QuadColor(DangerSoftTint, DangerBorder, DangerRed, "SHORTAGE")
+        else -> QuadColor(AmberSoftTint, AmberAccent.copy(alpha = 0.35f), AmberAccent, "EXCESS")
     }
 
     Column(
@@ -1589,7 +1685,7 @@ fun Step5SaveConfirmation(
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(14.dp),
             color = White,
             shadowElevation = 0.dp,
             border = BorderStroke(1.dp, SubtleOutline)
@@ -1598,186 +1694,346 @@ fun Step5SaveConfirmation(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Confirm Daily Cash Closing",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 16.sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = NavyText
-                )
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { showDatePicker = true }
-                        .testTag("business_date_picker_row"),
-                    shape = RoundedCornerShape(10.dp),
-                    color = IceSurface,
-                    border = BorderStroke(1.dp, SubtleOutline)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Text(
+                        text = "Confirm Daily Cash Closing",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 15.5.sp
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = NavyText,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = SoftSurfaceVariant,
+                        border = BorderStroke(1.dp, SubtleOutline),
+                        modifier = Modifier.testTag("closing_business_date_badge")
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.CalendarToday,
                                 contentDescription = "Business Date",
-                                tint = CyanPrimary,
-                                modifier = Modifier.size(14.dp)
+                                tint = CyanDeep,
+                                modifier = Modifier.size(12.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Text(
+                                text = formattedBusinessDate,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = NavyText,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // 1. Physical Cash Count Card (Bundle + Petty -> Total Counted)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("closing_counted_summary_card"),
+                    shape = RoundedCornerShape(12.dp),
+                    color = IceSurface,
+                    border = BorderStroke(1.dp, SubtleOutline)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
                                 Text(
-                                    text = "BUSINESS DATE",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = MutedNavyText,
-                                    fontWeight = FontWeight.SemiBold
+                                    text = "BUNDLE CASH",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.4.sp
+                                    ),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MutedNavyText
                                 )
                                 Text(
-                                    text = formattedBusinessDate,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                                    text = formatBirr(state.bundleCashTotalMinor),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = 13.5.sp,
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    fontWeight = FontWeight.Bold,
                                     color = NavyText,
-                                    fontWeight = FontWeight.Bold
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(28.dp)
+                                    .background(SubtleOutline)
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "PETTY CASH",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.4.sp
+                                    ),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MutedNavyText
+                                )
+                                Text(
+                                    text = formatBirr(state.pettyCashTotalMinor),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = 13.5.sp,
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                        Text(
-                            text = "Change",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
-                            color = CyanPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    color = SoftSurfaceVariant,
-                    border = BorderStroke(1.dp, SubtleOutline)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        SummaryRow("Bundle Cash", formatBirr(state.bundleCashTotalMinor), FontWeight.Medium)
-                        SummaryRow("Petty Cash", formatBirr(state.pettyCashTotalMinor), FontWeight.Medium)
-                        SummaryRow("Total Counted", formatBirr(state.totalCountedMinor), FontWeight.Bold)
-                        if (state.useSystemVerification) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = SubtleOutline
+                        HorizontalDivider(color = SubtleOutline)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(White)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Total Physical Cash",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = NavyText
                             )
-                            SummaryRow("Expected Balance", formatBirr(state.expectedEndingMinor), FontWeight.SemiBold)
-                            SummaryRow("Variance", formatBirr(state.differenceMinor), FontWeight.Bold)
+                            Text(
+                                text = formatBirr(state.totalCountedMinor),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 15.sp,
+                                    fontFeatureSettings = "tnum"
+                                ),
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CyanPrimary,
+                                modifier = Modifier.testTag("closing_total_counted_value")
+                            )
                         }
                     }
                 }
 
-                OutlinedButton(
-                    onClick = { viewModel.saveSession(branchId, staffId, isFinal = false) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("save_draft_button"),
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, CyanBorder),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanDeep),
-                    enabled = !state.isSaving
-                ) {
-                    Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save as Draft", fontWeight = FontWeight.SemiBold)
+                // 2. Ledger Expected vs. Counted Comparison & Status Variance Strip
+                if (state.useSystemVerification) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("closing_reconciliation_card"),
+                        shape = RoundedCornerShape(12.dp),
+                        color = White,
+                        border = BorderStroke(1.dp, SubtleOutline)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "SYSTEM RECONCILIATION",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = MutedNavyText
+                            )
+                            ClosingLedgerLine(
+                                label = "Opening Balance",
+                                value = formatBirr(state.openingBalanceMinor),
+                                valueColor = NavyText
+                            )
+                            ClosingLedgerLine(
+                                label = "Cash In · DR (+)",
+                                value = formatSignedBirr(state.totalDRMinor),
+                                valueColor = SuccessGreen
+                            )
+                            ClosingLedgerLine(
+                                label = "Cash Out · CR (−)",
+                                value = formatBirr(-kotlin.math.abs(state.totalCRMinor)),
+                                valueColor = DangerRed
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 2.dp),
+                                color = SubtleOutline
+                            )
+                            ClosingLedgerLine(
+                                label = "Expected Ending Balance",
+                                value = formatBirr(state.expectedEndingMinor),
+                                valueColor = NavyText,
+                                bold = true
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = varianceBg,
+                                border = BorderStroke(1.dp, varianceBorder),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("closing_variance_card")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(7.dp)
+                                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                                    .background(varianceColor)
+                                            )
+                                            Text(
+                                                text = "VARIANCE · $varianceTitle",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    letterSpacing = 0.4.sp
+                                                ),
+                                                fontWeight = FontWeight.Bold,
+                                                color = varianceColor
+                                            )
+                                        }
+                                        Text(
+                                            text = when (state.reconciliationStatus) {
+                                                "BALANCED" -> "Physical count matches expected balance"
+                                                "SHORTAGE" -> "Counted cash is below expected balance"
+                                                else -> "Counted cash is above expected balance"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                            color = MutedNavyText,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = formatSignedBirr(state.differenceMinor),
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 14.5.sp,
+                                            fontFeatureSettings = "tnum"
+                                        ),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = varianceColor,
+                                        modifier = Modifier.testTag("closing_variance_amount")
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        if (biometricEnabled) {
-                            val activity = context as? FragmentActivity
-                            if (activity != null) {
-                                securityManager.showBiometricPrompt(
-                                    activity = activity,
-                                    title = "Final Submission",
-                                    subtitle = "Authenticate to finalize today's cash count",
-                                    onSuccess = { viewModel.saveSession(branchId, staffId, isFinal = true) },
-                                    onError = { _, _ -> },
-                                    onFailed = { }
-                                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { viewModel.saveSession(branchId, staffId, isFinal = false) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("save_draft_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, CyanBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanDeep),
+                        enabled = !state.isSaving
+                    ) {
+                        Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save as Draft", fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = {
+                            if (biometricEnabled) {
+                                val activity = context as? FragmentActivity
+                                if (activity != null) {
+                                    securityManager.showBiometricPrompt(
+                                        activity = activity,
+                                        title = "Final Submission",
+                                        subtitle = "Authenticate to finalize today's cash count",
+                                        onSuccess = { viewModel.saveSession(branchId, staffId, isFinal = true) },
+                                        onError = { _, _ -> },
+                                        onFailed = { }
+                                    )
+                                } else {
+                                    viewModel.saveSession(branchId, staffId, isFinal = true)
+                                }
                             } else {
                                 viewModel.saveSession(branchId, staffId, isFinal = true)
                             }
-                        } else {
-                            viewModel.saveSession(branchId, staffId, isFinal = true)
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("save_session_button"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CyanPrimary,
-                        contentColor = Color.White
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-                    enabled = !state.isSaving
-                ) {
-                    if (state.isSaving) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = if (biometricEnabled) Icons.Rounded.Fingerprint else Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Submit Final Closing", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = state.selectedBusinessDateMillis
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { selectedUtcMillis ->
-                            viewModel.updateBusinessDate(
-                                utcDateMillisToLocalMidnight(selectedUtcMillis)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("save_session_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CyanPrimary,
+                            contentColor = Color.White
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                        enabled = !state.isSaving
+                    ) {
+                        if (state.isSaving) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
                             )
+                        } else {
+                            Icon(
+                                imageVector = if (biometricEnabled) Icons.Rounded.Fingerprint else Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Submit Final Closing", fontWeight = FontWeight.Bold)
                         }
-                        showDatePicker = false
                     }
-                ) {
-                    Text("SET DATE", color = CyanPrimary, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("CANCEL", color = MutedNavyText)
                 }
             }
-        ) {
-            DatePicker(state = datePickerState)
         }
     }
 
@@ -1787,6 +2043,50 @@ fun Step5SaveConfirmation(
             branchId = branchId,
             staffId = staffId,
             onDismiss = { showCashBookPreview = false }
+        )
+    }
+}
+
+private data class QuadColor(
+    val background: Color,
+    val border: Color,
+    val foreground: Color,
+    val label: String
+)
+
+@Composable
+private fun ClosingLedgerLine(
+    label: String,
+    value: String,
+    valueColor: Color,
+    bold: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium,
+            color = if (bold) NavyText else MutedNavyText,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = if (bold) 13.5.sp else 12.5.sp,
+                fontFeatureSettings = "tnum"
+            ),
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.SemiBold,
+            color = valueColor,
+            maxLines = 1
         )
     }
 }
@@ -1875,33 +2175,34 @@ private fun CashBookPreviewDialog(
             shadowElevation = 6.dp
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary)))
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .background(White)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "PHYSICAL CASH BOOK",
-                                style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp),
+                                style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.5.sp),
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                letterSpacing = 0.6.sp
+                                color = NavyText,
+                                letterSpacing = 0.5.sp
                             )
                             Text(
                                 text = buildString {
                                     append(dateLabel)
-                                    if (branchId.isNotBlank()) append(" • $branchId")
-                                    if (staffId.isNotBlank()) append(" • $staffId")
+                                    if (branchId.isNotBlank()) append(" · $branchId")
+                                    if (staffId.isNotBlank()) append(" · $staffId")
                                 },
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                color = Color.White.copy(alpha = 0.86f),
+                                color = MutedNavyText,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1909,7 +2210,7 @@ private fun CashBookPreviewDialog(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             IconButton(
                                 onClick = { copyCashBook() },
@@ -1918,7 +2219,7 @@ private fun CashBookPreviewDialog(
                                 Icon(
                                     imageVector = if (copiedNotice) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
                                     contentDescription = "Copy Cash Book Text",
-                                    tint = Color.White,
+                                    tint = CyanPrimary,
                                     modifier = Modifier.size(19.dp)
                                 )
                             }
@@ -1929,12 +2230,13 @@ private fun CashBookPreviewDialog(
                                 Icon(
                                     imageVector = Icons.Rounded.Close,
                                     contentDescription = "Close Preview",
-                                    tint = Color.White,
+                                    tint = MutedNavyText,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
+                    HorizontalDivider(color = SubtleOutline)
                 }
 
                 Column(

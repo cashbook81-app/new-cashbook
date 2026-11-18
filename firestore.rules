@@ -51,7 +51,7 @@ service cloud.firestore {
 
     function isManagerOrAdmin() {
       return isAdmin()
-        || (isActiveUser() && userProfile().role in ["MANAGER", "SUPERVISOR"]);
+        || (isActiveUser() && userProfile().role in ["MANAGER", "HEAD_OFFICE", "SUPERVISOR"]);
     }
 
     function activeCashier(branchId) {
@@ -83,7 +83,7 @@ service cloud.firestore {
         && (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 160))
         && data.staffId is string && data.staffId.size() >= 1 && data.staffId.size() <= 64
         && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 64
-        && data.role is string && data.role in ["CASHIER", "AUDITOR", "MANAGER", "ADMIN", "CSO", "SUPERVISOR"]
+        && data.role is string && data.role in ["CASHIER", "AUDITOR", "MANAGER", "HEAD_OFFICE", "ADMIN", "CSO", "SUPERVISOR"]
         && data.active is bool
         && (!('photoBase64' in data) || data.photoBase64 == null || (data.photoBase64 is string && data.photoBase64.size() <= 210000))
         && (!('canCreateCashSession' in data) || data.canCreateCashSession is bool)

@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -19,6 +18,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,10 +45,13 @@ import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -66,17 +69,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
@@ -87,14 +88,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import androidx.fragment.app.FragmentActivity
+import com.example.BuildConfig
 import com.example.data.local.SecurityManager
 import com.example.ui.theme.CyanBorder
-import com.example.ui.theme.CyanBright
 import com.example.ui.theme.CyanDeep
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanSoftTint
 import com.example.ui.theme.IceSurface
+import com.example.ui.theme.MutedNavyText
 import com.example.ui.theme.NavyText
+import com.example.ui.theme.PlusJakartaSansFontFamily
 import com.example.ui.theme.SoftSurfaceVariant
 import com.example.ui.theme.SubtleOutline
 import com.example.ui.theme.SuccessGreen
@@ -111,7 +114,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun WelcomeScreen(
     isLocked: Boolean = false,
-    allowAutoSignIn: Boolean = true,
+    allowAutoSignIn: Boolean = false,
     onAuthSuccess: () -> Unit,
     onSwitchAccount: () -> Unit = {},
     securityManager: SecurityManager
@@ -178,11 +181,11 @@ fun WelcomeScreen(
 
     val cardAlpha by animateFloatAsState(
         targetValue = if (startAnimations) 1f else 0.94f,
-        animationSpec = tween(durationMillis = 260),
+        animationSpec = tween(durationMillis = 240),
         label = "card_alpha"
     )
-    val cardOffset by animateDpAsState(
-        targetValue = if (startAnimations) 0.dp else 12.dp,
+    val cardOffsetFactor by animateFloatAsState(
+        targetValue = if (startAnimations) 0f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -225,7 +228,7 @@ fun WelcomeScreen(
         if (isLocked && biometricEnabled && !hasAutoLaunchedBiometric && windowInfo.isWindowFocused) {
             withFrameNanos { }
             withFrameNanos { }
-            delay(450)
+            delay(650)
             hasAutoLaunchedBiometric = true
             handleBiometricLogin()
         }
@@ -246,129 +249,108 @@ fun WelcomeScreen(
                 .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Executive Banking Vault Header
+            // Executive Private-Banking Hero Backdrop
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        brush = Brush.linearGradient(
+                        Brush.verticalGradient(
                             colors = listOf(
                                 VaultSlateDeep,
-                                CyanDeep,
-                                CyanPrimary
+                                Color(0xFF142D4C)
                             )
                         )
                     )
-                    .drawBehind {
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.06f),
-                            radius = size.width * 0.44f,
-                            center = Offset(size.width * 0.90f, size.height * 0.14f)
-                        )
-                        drawCircle(
-                            color = CyanBright.copy(alpha = 0.14f),
-                            radius = size.width * 0.30f,
-                            center = Offset(size.width * 0.10f, size.height * 0.80f)
-                        )
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.08f),
-                            radius = size.width * 0.28f,
-                            center = Offset(size.width * 0.90f, size.height * 0.14f),
-                            style = Stroke(width = 1.dp.toPx())
-                        )
-                        val wavePath = Path().apply {
-                            moveTo(0f, size.height * 0.74f)
-                            cubicTo(
-                                size.width * 0.34f, size.height * 0.56f,
-                                size.width * 0.66f, size.height * 0.88f,
-                                size.width, size.height * 0.66f
-                            )
-                        }
-                        drawPath(
-                            path = wavePath,
-                            color = Color.White.copy(alpha = 0.13f),
-                            style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                    }
                     .statusBarsPadding()
-                    .padding(top = 42.dp, bottom = 78.dp, start = 24.dp, end = 24.dp),
+                    .padding(top = 34.dp, bottom = 48.dp, start = 24.dp, end = 24.dp),
                 contentAlignment = Alignment.Center
             ) {
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    drawCircle(
+                        color = CyanPrimary.copy(alpha = 0.08f),
+                        radius = size.maxDimension * 0.42f,
+                        center = Offset(size.width * 0.88f, size.height * 0.16f)
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.04f),
+                        radius = size.maxDimension * 0.34f,
+                        center = Offset(size.width * 0.12f, size.height * 0.85f)
+                    )
+                }
+
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(
-                        shape = RoundedCornerShape(50.dp),
-                        color = Color.White.copy(alpha = 0.13f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color.White.copy(alpha = 0.10f))
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(18.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "BRANCH TREASURY VAULT",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                letterSpacing = 1.2.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.92f),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        Icon(
+                            imageVector = Icons.Rounded.AccountBalance,
+                            contentDescription = "Cash Control",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color.White.copy(alpha = 0.16f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
-                        modifier = Modifier.size(68.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Rounded.AccountBalance,
-                                contentDescription = "Cash Control",
-                                tint = Color.White,
-                                modifier = Modifier.size(34.dp)
-                            )
-                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
+                        text = "BRANCH TREASURY VAULT",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            letterSpacing = 1.6.sp
+                        ),
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.72f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
                         text = "CASH CONTROL",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            letterSpacing = 1.8.sp
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 24.sp,
+                            letterSpacing = 1.5.sp
                         ),
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Precision Reconciliation • Vault Audit",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.84f),
+                        text = "Branch Cash & Audit Portal",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                        color = Color.White.copy(alpha = 0.78f),
                         textAlign = TextAlign.Center
                     )
                 }
             }
 
-            // Elevated White Auth Card overlapping header
+            // Overlapping Executive Authentication Card
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 480.dp)
+                    .widthIn(max = 460.dp)
                     .padding(horizontal = 20.dp)
-                    .offset(y = (-36).dp + cardOffset)
-                    .alpha(cardAlpha),
-                shape = RoundedCornerShape(28.dp),
+                    .offset(y = (-24).dp)
+                    .graphicsLayer {
+                        alpha = cardAlpha
+                        translationY = cardOffsetFactor * 8.dp.toPx()
+                    },
+                shape = RoundedCornerShape(22.dp),
                 color = White,
-                shadowElevation = 14.dp,
-                border = BorderStroke(1.dp, CyanBorder.copy(alpha = 0.65f))
+                shadowElevation = 4.dp,
+                border = BorderStroke(1.dp, SubtleOutline)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                        .padding(horizontal = 22.dp, vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (isLocked) {
@@ -414,8 +396,9 @@ fun WelcomeScreen(
             Spacer(modifier = Modifier.weight(1f, fill = true))
 
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -429,16 +412,19 @@ fun WelcomeScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Authorized Staff Only",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Authorized Branch Staff Only",
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                        fontWeight = FontWeight.Medium,
+                        color = MutedNavyText
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Cash Control • v1.1.0",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    text = "Cash Control · v${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        fontFeatureSettings = "tnum"
+                    ),
+                    color = MutedNavyText.copy(alpha = 0.72f)
                 )
             }
         }
@@ -451,49 +437,71 @@ private fun SignInCardContent(
     error: String?,
     onGoogleSignIn: () -> Unit
 ) {
+    Surface(
+        shape = RoundedCornerShape(50.dp),
+        color = CyanSoftTint,
+        border = BorderStroke(1.dp, CyanBorder)
+    ) {
+        Text(
+            text = "STAFF PORTAL",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                letterSpacing = 0.9.sp
+            ),
+            fontWeight = FontWeight.Bold,
+            color = CyanDeep,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+
+    Spacer(modifier = Modifier.height(14.dp))
+
     Text(
         text = "Welcome back",
-        style = MaterialTheme.typography.headlineSmall,
+        style = MaterialTheme.typography.titleLarge.copy(
+            fontFamily = PlusJakartaSansFontFamily,
+            fontSize = 21.sp
+        ),
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = NavyText,
         textAlign = TextAlign.Center
     )
     Spacer(modifier = Modifier.height(6.dp))
     Text(
-        text = "Sign in with your staff account to continue.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        text = "Sign in with your authorized branch account to continue.",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+        color = MutedNavyText,
         textAlign = TextAlign.Center
     )
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(22.dp))
 
     Button(
         onClick = onGoogleSignIn,
         enabled = !isLoading,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(54.dp)
             .testTag("google_sign_in_button"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = CyanPrimary,
+            containerColor = VaultSlateDeep,
             contentColor = Color.White,
-            disabledContainerColor = CyanPrimary.copy(alpha = 0.72f),
+            disabledContainerColor = VaultSlateDeep.copy(alpha = 0.72f),
             disabledContentColor = Color.White
         ),
         elevation = ButtonDefaults.buttonElevation(
-            defaultElevation = 2.dp,
+            defaultElevation = 0.dp,
             pressedElevation = 0.dp
         )
     ) {
         if (isLoading) {
             CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
                 color = Color.White,
-                strokeWidth = 2.5.dp
+                strokeWidth = 2.dp
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = "Signing in...",
                 style = MaterialTheme.typography.labelLarge,
@@ -502,20 +510,44 @@ private fun SignInCardContent(
         } else {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
                     .background(Color.White),
                 contentAlignment = Alignment.Center
             ) {
-                GoogleGLogo(modifier = Modifier.size(16.dp))
+                GoogleGLogo(modifier = Modifier.size(15.dp))
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = "Continue with Google",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                 fontWeight = FontWeight.Bold
             )
         }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+    HorizontalDivider(color = SubtleOutline)
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Shield,
+            contentDescription = null,
+            tint = CyanDeep,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "Role-Based Access · Branch Security",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+            color = MutedNavyText,
+            fontWeight = FontWeight.Medium
+        )
     }
 
     AnimatedVisibility(
@@ -524,7 +556,7 @@ private fun SignInCardContent(
         exit = fadeOut() + shrinkVertically()
     ) {
         error?.let { msg ->
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             AuthErrorBanner(message = msg)
         }
     }
@@ -543,7 +575,7 @@ private fun BiometricLockCardContent(
         val infiniteTransition = rememberInfiniteTransition(label = "fingerprint_pulse")
         val scale by infiniteTransition.animateFloat(
             initialValue = 1f,
-            targetValue = 1.15f,
+            targetValue = 1.14f,
             animationSpec = infiniteRepeatable(
                 animation = tween(1400, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
@@ -551,8 +583,8 @@ private fun BiometricLockCardContent(
             label = "pulse_scale"
         )
         val alpha by infiniteTransition.animateFloat(
-            initialValue = 0.22f,
-            targetValue = 0.06f,
+            initialValue = 0.20f,
+            targetValue = 0.05f,
             animationSpec = infiniteRepeatable(
                 animation = tween(1400, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
@@ -561,76 +593,103 @@ private fun BiometricLockCardContent(
         )
         scale to alpha
     } else {
-        1f to 0.14f
+        1f to 0.12f
     }
 
     Box(
-        modifier = Modifier.size(88.dp),
+        modifier = Modifier.size(84.dp),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .size(84.dp)
+                .size(80.dp)
                 .scale(pulseScale)
                 .clip(CircleShape)
                 .background(CyanPrimary.copy(alpha = pulseAlpha))
         )
         Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(62.dp)
                 .clip(CircleShape)
-                .background(CyanSoftTint),
+                .background(CyanSoftTint)
+                .border(1.dp, CyanBorder, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Rounded.Fingerprint,
                 contentDescription = "Fingerprint Unlock",
-                tint = CyanPrimary,
-                modifier = Modifier.size(34.dp)
+                tint = CyanDeep,
+                modifier = Modifier.size(32.dp)
             )
         }
     }
 
-    Spacer(modifier = Modifier.height(14.dp))
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Lock,
+            contentDescription = null,
+            tint = CyanDeep,
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            text = "VAULT SECURITY",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                letterSpacing = 1.sp
+            ),
+            fontWeight = FontWeight.Bold,
+            color = CyanDeep
+        )
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
 
     Text(
         text = "Session Locked",
-        style = MaterialTheme.typography.headlineSmall,
+        style = MaterialTheme.typography.titleLarge.copy(
+            fontFamily = PlusJakartaSansFontFamily,
+            fontSize = 21.sp
+        ),
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = NavyText,
         textAlign = TextAlign.Center
     )
     Spacer(modifier = Modifier.height(4.dp))
     Text(
         text = "Verify your fingerprint to continue.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+        color = MutedNavyText,
         textAlign = TextAlign.Center
     )
 
     if (!displayName.isNullOrBlank() || !email.isNullOrBlank()) {
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         Surface(
             shape = RoundedCornerShape(50.dp),
             color = SoftSurfaceVariant,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            border = BorderStroke(1.dp, SubtleOutline)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Rounded.AccountCircle,
                     contentDescription = null,
-                    tint = CyanPrimary,
-                    modifier = Modifier.size(18.dp)
+                    tint = CyanDeep,
+                    modifier = Modifier.size(17.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(7.dp))
                 Text(
                     text = displayName?.takeIf { it.isNotBlank() } ?: email.orEmpty(),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp),
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = NavyText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -638,20 +697,20 @@ private fun BiometricLockCardContent(
         }
     }
 
-    Spacer(modifier = Modifier.height(20.dp))
+    Spacer(modifier = Modifier.height(18.dp))
 
     Button(
         onClick = onUnlockClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(54.dp)
             .testTag("biometric_unlock_button"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = CyanPrimary,
+            containerColor = VaultSlateDeep,
             contentColor = Color.White
         ),
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
     ) {
         Icon(
             imageVector = Icons.Rounded.Fingerprint,
@@ -661,12 +720,12 @@ private fun BiometricLockCardContent(
         Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = "Unlock with Biometrics",
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
             fontWeight = FontWeight.Bold
         )
     }
 
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     TextButton(
         onClick = onSwitchAccountClick,
@@ -676,8 +735,8 @@ private fun BiometricLockCardContent(
     ) {
         Text(
             text = "Sign in with a different account",
-            style = MaterialTheme.typography.labelLarge,
-            color = CyanPrimary,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp),
+            color = CyanDeep,
             fontWeight = FontWeight.SemiBold
         )
     }

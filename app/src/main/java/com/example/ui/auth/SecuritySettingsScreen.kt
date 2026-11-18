@@ -35,7 +35,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -61,7 +60,6 @@ import com.example.data.remote.model.resolvedRole
 import com.example.data.remote.update.AppUpdateChecker
 import com.example.data.remote.update.UpdateCheckResult
 import com.example.data.remote.update.normalizeVersionString
-import com.example.data.remote.update.parseGitHubRepoSlug
 import com.example.data.repository.UserRepository
 import com.example.ui.update.AppUpdateDialog
 import com.example.ui.theme.CyanBorder
@@ -85,8 +83,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.text.SimpleDateFormat
-import java.util.*
 
 @Composable
 fun SecuritySettingsScreen(
@@ -125,7 +121,6 @@ fun ProfileScreen(
     val biometricEnabled by securityManager.isBiometricEnabled().collectAsState(initial = false)
     val requireBiometricOnSubmit by securityManager.isRequireBiometricOnSubmit().collectAsState(initial = true)
     val autoLockMinutes by securityManager.getAutoLockTimeoutMinutes().collectAsState(initial = 5)
-    val lastVerifiedTs by securityManager.getLastVerifiedTimestamp().collectAsState(initial = null)
     val firebaseUser = remember {
         try {
             Firebase.auth.currentUser
@@ -141,14 +136,9 @@ fun ProfileScreen(
     var editedPhotoBase64 by remember { mutableStateOf(userProfile?.photoBase64.orEmpty()) }
     var isProcessingPhoto by remember { mutableStateOf(false) }
 
-    val githubRepoOverride by securityManager.getGitHubRepoOverrideFlow().collectAsState(initial = "")
-    val effectiveRepoSlug = remember(githubRepoOverride) {
-        parseGitHubRepoSlug(githubRepoOverride.ifBlank { BuildConfig.GITHUB_RELEASE_REPO })?.fullSlug
-    }
     var isCheckingUpdates by remember { mutableStateOf(false) }
     var updateStatusMessage by remember { mutableStateOf<String?>(null) }
     var updateDialogResult by remember { mutableStateOf<UpdateCheckResult.UpdateAvailable?>(null) }
-    var showGitHubRepoDialog by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -271,61 +261,40 @@ fun ProfileScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Column(modifier = Modifier.background(White)) {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = "Profile",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = PlusJakartaSansFontFamily,
-                                    fontSize = 18.sp
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = NavyText
-                            )
-                            Text(
-                                text = "Account & Vault Security",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                color = MutedNavyText
-                            )
-                        }
-                    },
-                    actions = {
-                        if (userProfile != null && userRepository != null) {
-                            Surface(
-                                onClick = openEditProfile,
-                                shape = RoundedCornerShape(10.dp),
-                                color = CyanSoftTint,
-                                border = BorderStroke(1.dp, CyanBorder),
-                                modifier = Modifier
-                                    .padding(end = 12.dp)
-                                    .minimumInteractiveComponentSize()
-                                    .heightIn(min = 40.dp)
-                                    .testTag("edit_profile_button")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Edit,
-                                        contentDescription = "Edit Profile",
-                                        tint = CyanDeep,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = "Edit",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                                        fontWeight = FontWeight.Bold,
-                                        color = CyanDeep
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = White)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Profile",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 16.sp
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = NavyText
+                    )
+                    Surface(
+                        color = SoftSurfaceVariant,
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, SubtleOutline)
+                    ) {
+                        Text(
+                            text = userProfile?.resolvedRole()?.displayLabel?.uppercase() ?: "STAFF",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 0.6.sp
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = MutedNavyText,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
                 HorizontalDivider(thickness = 1.dp, color = SubtleOutline)
             }
         },
@@ -344,22 +313,18 @@ fun ProfileScreen(
                     .fillMaxWidth()
                     .widthIn(max = 600.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Executive Banking Credential Card
+                // Matte Corporate Banking Credential Card
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(VaultSlateDeep, CyanDeep, CyanPrimary)
-                            )
-                        )
-                        .padding(16.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(VaultSlateDeep)
+                        .padding(14.dp)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -368,8 +333,8 @@ fun ProfileScreen(
                                 photoBase64 = userProfile?.photoBase64.orEmpty(),
                                 fallbackPhotoUrl = firebaseUser?.photoUrl,
                                 initials = initials,
-                                size = 56.dp,
-                                borderColor = Color.White.copy(alpha = 0.42f),
+                                size = 50.dp,
+                                borderColor = Color.White.copy(alpha = 0.4f),
                                 backgroundColor = Color.White.copy(alpha = 0.16f),
                                 initialsColor = White,
                                 modifier = if (userProfile != null && userRepository != null) {
@@ -379,12 +344,15 @@ fun ProfileScreen(
                                 }
                             )
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
                                 Text(
                                     text = displayName,
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontFamily = PlusJakartaSansFontFamily,
-                                        fontSize = 17.5.sp
+                                        fontSize = 15.5.sp
                                     ),
                                     fontWeight = FontWeight.Bold,
                                     color = White,
@@ -393,35 +361,70 @@ fun ProfileScreen(
                                 )
                                 Text(
                                     text = email,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = Color.White.copy(alpha = 0.8f),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = Color.White.copy(alpha = 0.78f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                             Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                color = Color.White.copy(alpha = 0.14f),
-                                shape = RoundedCornerShape(50.dp),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.24f))
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
+                                if (userProfile != null && userRepository != null) {
+                                    Surface(
+                                        onClick = openEditProfile,
+                                        color = Color.White.copy(alpha = 0.16f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
                                         modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(SuccessGreen)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = "Verified",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = White
-                                    )
+                                            .heightIn(min = 32.dp)
+                                            .testTag("edit_profile_button")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Edit,
+                                                contentDescription = "Edit Profile",
+                                                tint = White,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Edit",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                                fontWeight = FontWeight.Bold,
+                                                color = White
+                                            )
+                                        }
+                                    }
+                                }
+                                Surface(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(50.dp),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(5.dp)
+                                                .clip(CircleShape)
+                                                .background(SuccessGreen)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "Verified",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = White
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -430,7 +433,7 @@ fun ProfileScreen(
                             HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 ProfileCredentialItem(
                                     label = "ROLE",
@@ -444,68 +447,16 @@ fun ProfileScreen(
                                 )
                                 ProfileCredentialItem(
                                     label = "BRANCH",
-                                    value = if (userProfile.resolvedRole() == StaffRole.MANAGER || userProfile.resolvedRole() == StaffRole.ADMIN) {
-                                        "ALL BRANCHES"
-                                    } else {
-                                        userProfile.branchId
+                                    value = when (userProfile.resolvedRole()) {
+                                        StaffRole.MANAGER,
+                                        StaffRole.HEAD_OFFICE,
+                                        StaffRole.ADMIN -> "ALL BRANCHES"
+                                        else -> userProfile.branchId
                                     },
                                     modifier = Modifier.weight(1.2f)
                                 )
                             }
                         }
-                    }
-                }
-
-                // Account & Authentication Telemetry Card
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = White,
-                    shadowElevation = 0.dp,
-                    border = BorderStroke(1.dp, SubtleOutline)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "ACCOUNT & SESSION",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.5.sp,
-                                letterSpacing = 0.8.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = MutedNavyText
-                        )
-
-                        val accessScopeLabel = if (userProfile?.resolvedRole() == StaffRole.MANAGER || userProfile?.resolvedRole() == StaffRole.ADMIN) {
-                            "Google Identity · All-Branches Access"
-                        } else {
-                            "Google Identity · Branch-Isolated Access"
-                        }
-                        AccountDetailRow(
-                            icon = Icons.Rounded.VerifiedUser,
-                            title = "Authentication",
-                            subtitle = accessScopeLabel,
-                            trailingBadge = if (userProfile?.active == true || userProfile?.isSuperAdmin() == true) "Active" else "Pending"
-                        )
-
-                        HorizontalDivider(color = SubtleOutline)
-
-                        val verifiedLabel = remember(lastVerifiedTs) {
-                            if (lastVerifiedTs != null) {
-                                SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
-                                    .format(Date(lastVerifiedTs!!))
-                            } else {
-                                "No recent check"
-                            }
-                        }
-                        AccountDetailRow(
-                            icon = Icons.Rounded.Schedule,
-                            title = "Last Biometric Verification",
-                            subtitle = verifiedLabel,
-                            trailingBadge = null
-                        )
                     }
                 }
 
@@ -556,7 +507,7 @@ fun ProfileScreen(
                         SecuritySwitchRow(
                             icon = Icons.Rounded.Fingerprint,
                             title = "Biometric Login",
-                            subtitle = "Require fingerprint to unlock Cash Control",
+                            subtitle = "Fingerprint unlock for Cash Control",
                             checked = biometricEnabled,
                             enabled = isBiometricAvailable || biometricEnabled,
                             switchTag = "biometric_toggle_switch",
@@ -613,7 +564,7 @@ fun ProfileScreen(
                                 SecuritySwitchRow(
                                     icon = Icons.Rounded.TaskAlt,
                                     title = "Confirm Day Closing",
-                                    subtitle = "Verify fingerprint before submitting closing",
+                                    subtitle = "Fingerprint check before closing",
                                     checked = requireBiometricOnSubmit,
                                     enabled = true,
                                     switchTag = "biometric_submit_switch",
@@ -811,7 +762,7 @@ fun ProfileScreen(
                     }
                 }
 
-                // App Version & GitHub Release Updates Card
+                // Clean App Version & Updates Card (no technical repository UI exposed)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -829,65 +780,42 @@ fun ProfileScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "APP VERSION & UPDATES",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    letterSpacing = 0.8.sp
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = MutedNavyText
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                ProfileSettingIcon(Icons.Rounded.SystemUpdate)
+                                Column {
+                                    Text(
+                                        text = "App Version",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = NavyText
+                                    )
+                                    Text(
+                                        text = "Cash Control v$installedVersion",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.5.sp,
+                                            fontFeatureSettings = "tnum"
+                                        ),
+                                        color = MutedNavyText
+                                    )
+                                }
+                            }
                             Surface(
-                                color = CyanSoftTint,
+                                color = SoftSurfaceVariant,
                                 shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, CyanBorder)
+                                border = BorderStroke(1.dp, SubtleOutline)
                             ) {
                                 Text(
-                                    text = "v$installedVersion (${BuildConfig.VERSION_CODE})",
+                                    text = "v$installedVersion",
                                     style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 10.sp,
+                                        fontSize = 10.5.sp,
                                         fontFeatureSettings = "tnum"
                                     ),
                                     fontWeight = FontWeight.Bold,
-                                    color = CyanDeep,
+                                    color = NavyText,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ProfileSettingIcon(Icons.Rounded.CloudDownload)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "GitHub Release Source",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = NavyText
-                                )
-                                Text(
-                                    text = effectiveRepoSlug ?: "Not configured (tap Set)",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
-                                    color = if (effectiveRepoSlug != null) MutedNavyText else CyanDeep,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            TextButton(
-                                onClick = { showGitHubRepoDialog = true },
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .testTag("configure_github_repo_button")
-                            ) {
-                                Text(
-                                    text = if (effectiveRepoSlug != null) "Edit" else "Set",
-                                    fontWeight = FontWeight.Bold,
-                                    color = CyanDeep,
-                                    fontSize = 12.5.sp
                                 )
                             }
                         }
@@ -922,15 +850,14 @@ fun ProfileScreen(
                                         isCheckingUpdates = false
                                         when (result) {
                                             is UpdateCheckResult.UpdateAvailable -> {
-                                                updateStatusMessage = "New release v${result.release.versionName} available."
+                                                updateStatusMessage = "Version ${result.release.versionName} is available."
                                                 updateDialogResult = result
                                             }
                                             is UpdateCheckResult.UpToDate -> {
-                                                updateStatusMessage = "Up to date (v${result.currentVersion})."
+                                                updateStatusMessage = "You are on the latest version (v${result.currentVersion})."
                                             }
                                             UpdateCheckResult.NotConfigured -> {
-                                                updateStatusMessage = "Set your GitHub repository (owner/repo) to check releases."
-                                                showGitHubRepoDialog = true
+                                                updateStatusMessage = "App updates are managed by your branch administrator."
                                             }
                                             is UpdateCheckResult.Error -> {
                                                 updateStatusMessage = result.message
@@ -943,7 +870,7 @@ fun ProfileScreen(
                             shape = RoundedCornerShape(11.dp),
                             border = BorderStroke(1.dp, CyanBorder),
                             colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = CyanSoftTint.copy(alpha = 0.45f),
+                                containerColor = CyanSoftTint,
                                 contentColor = CyanDeep
                             ),
                             modifier = Modifier
@@ -958,7 +885,7 @@ fun ProfileScreen(
                                     color = CyanDeep
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Checking Releases...", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Checking for Updates...", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             } else {
                                 Icon(
                                     imageVector = Icons.Rounded.SystemUpdate,
@@ -1000,7 +927,7 @@ fun ProfileScreen(
                 }
 
                 Text(
-                    text = "Cash Control · Encrypted Branch Ledger",
+                    text = "Cash Control · Branch Cash Management",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MutedNavyText.copy(alpha = 0.7f),
                     modifier = Modifier
@@ -1300,97 +1227,6 @@ fun ProfileScreen(
         )
     }
 
-    if (showGitHubRepoDialog) {
-        var repoInput by remember(showGitHubRepoDialog, githubRepoOverride) {
-            mutableStateOf(
-                githubRepoOverride.ifBlank { BuildConfig.GITHUB_RELEASE_REPO }
-            )
-        }
-        var repoError by remember(showGitHubRepoDialog) { mutableStateOf<String?>(null) }
-
-        AlertDialog(
-            onDismissRequest = { showGitHubRepoDialog = false },
-            containerColor = White,
-            title = {
-                Text(
-                    text = "GitHub Release Repository",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = NavyText
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Enter your GitHub repository (e.g. myorg/cash-control) where APK releases are published.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MutedNavyText
-                    )
-                    OutlinedTextField(
-                        value = repoInput,
-                        onValueChange = {
-                            repoInput = it
-                            repoError = null
-                        },
-                        label = { Text("owner/repo") },
-                        placeholder = { Text("username/cash-control") },
-                        singleLine = true,
-                        isError = repoError != null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("github_repo_input")
-                    )
-                    if (repoError != null) {
-                        Text(
-                            text = repoError!!,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = DangerRed
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = repoInput.trim()
-                        if (trimmed.isEmpty()) {
-                            coroutineScope.launch {
-                                securityManager.setGitHubRepoOverride("")
-                                showGitHubRepoDialog = false
-                                updateStatusMessage = null
-                            }
-                            return@Button
-                        }
-                        val parsed = parseGitHubRepoSlug(trimmed)
-                        if (parsed == null) {
-                            repoError = "Use format owner/repo or a GitHub URL."
-                        } else {
-                            coroutineScope.launch {
-                                securityManager.setGitHubRepoOverride(parsed.fullSlug)
-                                showGitHubRepoDialog = false
-                                updateStatusMessage = "Release source set to ${parsed.fullSlug}."
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .testTag("save_github_repo_button")
-                ) {
-                    Text("SAVE", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showGitHubRepoDialog = false },
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("CANCEL", color = MutedNavyText)
-                }
-            }
-        )
-    }
-
     val manualUpdate = updateDialogResult
     if (manualUpdate != null) {
         AppUpdateDialog(
@@ -1405,52 +1241,6 @@ fun ProfileScreen(
                 updateStatusMessage = "Skipped notifications for v$skippedVersion."
             }
         )
-    }
-}
-
-@Composable
-private fun AccountDetailRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    trailingBadge: String?
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ProfileSettingIcon(icon)
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
-                fontWeight = FontWeight.SemiBold,
-                color = NavyText
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
-                color = MutedNavyText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (trailingBadge != null) {
-            Surface(
-                color = CyanSoftTint,
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(1.dp, CyanBorder)
-            ) {
-                Text(
-                    text = trailingBadge,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    fontWeight = FontWeight.SemiBold,
-                    color = CyanDeep,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                )
-            }
-        }
     }
 }
 
@@ -1492,7 +1282,7 @@ private fun SecuritySwitchRow(
                     text = subtitle,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MutedNavyText,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }

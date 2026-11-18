@@ -14,12 +14,14 @@ enum class StaffRole(val firestoreValue: String, val displayLabel: String) {
     CASHIER("CASHIER", "Cashier"),
     AUDITOR("AUDITOR", "Auditor"),
     MANAGER("MANAGER", "Manager"),
+    HEAD_OFFICE("HEAD_OFFICE", "Head Office"),
     ADMIN("ADMIN", "Admin");
 
     companion object {
         fun fromRaw(raw: String?): StaffRole {
             return when (raw?.trim()?.uppercase()) {
                 "ADMIN" -> ADMIN
+                "HEAD_OFFICE", "HEAD OFFICE" -> HEAD_OFFICE
                 "MANAGER", "SUPERVISOR" -> MANAGER
                 "AUDITOR" -> AUDITOR
                 else -> CASHIER

@@ -72,54 +72,54 @@ fun PendingActivationScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary))),
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(SoftSurfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.HourglassTop,
                         contentDescription = "Pending Activation",
-                        tint = White,
-                        modifier = Modifier.size(32.dp)
+                        tint = VaultSlateDeep,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(50.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = AmberSoftTint,
-                    border = BorderStroke(1.dp, AmberAccent.copy(alpha = 0.45f))
+                    border = BorderStroke(1.dp, AmberAccent.copy(alpha = 0.35f))
                 ) {
                     Text(
                         text = "PENDING ADMIN ACTIVATION",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.5.sp,
-                            letterSpacing = 0.8.sp
+                            fontSize = 10.sp,
+                            letterSpacing = 0.7.sp
                         ),
                         fontWeight = FontWeight.Bold,
                         color = AmberAccent,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
 
                 Text(
                     text = "Awaiting Branch & Role Assignment",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = NavyText,
                     textAlign = TextAlign.Center
                 )
 
                 Text(
-                    text = "Your Google account is registered. Ask your System Admin ($SUPER_ADMIN_EMAIL) to activate your account and assign your branch and role (Cashier, Auditor, or Manager).",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "Your account is registered. Ask your administrator ($SUPER_ADMIN_EMAIL) to activate your access and assign your branch and role.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MutedNavyText,
                     textAlign = TextAlign.Center
                 )
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = SoftSurfaceVariant,
                     border = BorderStroke(1.dp, SubtleOutline)
                 ) {
@@ -128,7 +128,7 @@ fun PendingActivationScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         PendingInfoLine("Account Name", profile.fullName.ifBlank { "Staff Member" })
-                        PendingInfoLine("Google Email", profile.email.ifBlank { "—" })
+                        PendingInfoLine("Email", profile.email.ifBlank { "—" })
                         PendingInfoLine("Assigned Branch", profile.branchId.ifBlank { "UNASSIGNED" })
                         PendingInfoLine("Assigned Role", profile.role.ifBlank { "PENDING" })
                     }

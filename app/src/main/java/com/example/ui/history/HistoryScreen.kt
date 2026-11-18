@@ -21,7 +21,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -40,6 +39,7 @@ import com.example.ui.theme.CyanBorder
 import com.example.ui.theme.CyanDeep
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanSoftTint
+import com.example.ui.theme.DangerBorder
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DangerSoftTint
 import com.example.ui.theme.IceSurface
@@ -108,63 +108,66 @@ fun HistoryScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             Column(modifier = Modifier.background(White)) {
-                TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "History",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = PlusJakartaSansFontFamily,
-                                    fontSize = 18.sp
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = NavyText
-                            )
-                            val badgeLabel = if (isAllBranches) {
-                                if (selectedBranchFilter == "ALL") "ALL BRANCHES" else selectedBranchFilter
-                            } else {
-                                branchId
-                            }
-                            if (badgeLabel.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(50.dp),
-                                    color = CyanSoftTint,
-                                    border = BorderStroke(1.dp, CyanBorder)
-                                ) {
-                                    Text(
-                                        text = badgeLabel,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                                        fontWeight = FontWeight.Bold,
-                                        color = CyanDeep,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "History",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 16.sp
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = NavyText
+                        )
+                        val badgeLabel = if (isAllBranches) {
+                            if (selectedBranchFilter == "ALL") "ALL BRANCHES" else selectedBranchFilter
+                        } else {
+                            branchId
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = White),
-                    actions = {
-                        IconButton(
-                            onClick = { exportSessionsToCsv(context, visibleHistory) },
-                            enabled = visibleHistory.isNotEmpty(),
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("export_history_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Share,
-                                contentDescription = "Export CSV",
-                                tint = if (visibleHistory.isNotEmpty()) CyanPrimary else MutedNavyText.copy(alpha = 0.4f),
-                                modifier = Modifier.size(19.dp)
-                            )
+                        if (badgeLabel.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SoftSurfaceVariant,
+                                border = BorderStroke(1.dp, SubtleOutline)
+                            ) {
+                                Text(
+                                    text = badgeLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MutedNavyText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
-                )
+
+                    IconButton(
+                        onClick = { exportSessionsToCsv(context, visibleHistory) },
+                        enabled = visibleHistory.isNotEmpty(),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("export_history_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Share,
+                            contentDescription = "Export CSV",
+                            tint = if (visibleHistory.isNotEmpty()) NavyText else MutedNavyText.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
                 HorizontalDivider(thickness = 1.dp, color = SubtleOutline)
             }
         }
@@ -199,15 +202,16 @@ fun HistoryScreen(
                     contentPadding = PaddingValues(top = 12.dp, bottom = 18.dp)
                 ) {
                     item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary)))
-                                .padding(16.dp)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = White,
+                            border = BorderStroke(1.dp, SubtleOutline)
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -216,37 +220,42 @@ fun HistoryScreen(
                                         text = "LATEST ENDING BALANCE",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 10.sp,
-                                            letterSpacing = 0.9.sp
+                                            letterSpacing = 0.8.sp
                                         ),
-                                        fontWeight = FontWeight.Bold,
-                                        color = White.copy(alpha = 0.78f)
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MutedNavyText
                                     )
-                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = formatBirr(latestSession.totalCountedMinor),
                                         style = MaterialTheme.typography.titleLarge.copy(
+                                            fontSize = 20.sp,
                                             fontFeatureSettings = "tnum"
                                         ),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = White,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyText,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = White.copy(alpha = 0.14f),
-                                    border = BorderStroke(1.dp, White.copy(alpha = 0.22f))
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = SoftSurfaceVariant,
+                                    border = BorderStroke(1.dp, SubtleOutline)
                                 ) {
                                     Column(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                         horizontalAlignment = Alignment.End
                                     ) {
                                         Text(
                                             text = "${visibleHistory.size} Records",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                                            fontWeight = FontWeight.Bold,
-                                            color = White
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontSize = 12.sp,
+                                                fontFeatureSettings = "tnum"
+                                            ),
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = NavyText
                                         )
                                         Text(
                                             text = "$balancedCount balanced",
@@ -254,7 +263,7 @@ fun HistoryScreen(
                                                 fontSize = 10.5.sp,
                                                 fontFeatureSettings = "tnum"
                                             ),
-                                            color = White.copy(alpha = 0.82f)
+                                            color = MutedNavyText
                                         )
                                     }
                                 }
@@ -312,14 +321,14 @@ fun HistoryScreen(
                                         )
                                         Spacer(modifier = Modifier.width(7.dp))
                                         Text(
-                                            text = "$pendingSyncCount pending cloud sync",
+                                            text = "$pendingSyncCount records pending upload",
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
                                             fontWeight = FontWeight.Medium,
                                             color = NavyText
                                         )
                                     }
                                     Text(
-                                        text = if (uiState.isSyncingHistory) "Syncing..." else "Sync now",
+                                        text = if (uiState.isSyncingHistory) "Updating..." else "Update",
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
                                         fontWeight = FontWeight.Bold,
                                         color = CyanDeep
@@ -393,18 +402,18 @@ private fun HistoryLedgerCard(
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(session.createdAt))
     }
 
-    val (statusBg, statusColor) = when (session.reconciliationStatus) {
-        "BALANCED" -> SuccessSoftTint to SuccessGreen
-        "SHORTAGE" -> DangerSoftTint to DangerRed
-        else -> AmberSoftTint to AmberAccent
+    val (statusBorder, statusColor) = when (session.reconciliationStatus) {
+        "BALANCED" -> SubtleOutline to SuccessGreen
+        "SHORTAGE" -> DangerBorder to DangerRed
+        else -> SubtleOutline to AmberAccent
     }
 
     Surface(
         onClick = onView,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         color = White,
-        shadowElevation = 1.dp,
+        shadowElevation = 0.dp,
         border = BorderStroke(1.dp, SubtleOutline)
     ) {
         Row(
@@ -456,13 +465,14 @@ private fun HistoryLedgerCard(
                             color = MutedNavyText
                         )
                         Surface(
-                            shape = RoundedCornerShape(50.dp),
-                            color = statusBg
+                            shape = RoundedCornerShape(6.dp),
+                            color = IceSurface,
+                            border = BorderStroke(1.dp, statusBorder)
                         ) {
                             Text(
                                 text = session.reconciliationStatus,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = statusColor,
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                             )
@@ -503,28 +513,29 @@ private fun HistoryLedgerCard(
                     }
                 }
 
-                FilledTonalButton(
+                OutlinedButton(
                     onClick = onView,
                     modifier = Modifier
-                        .heightIn(min = 42.dp)
+                        .heightIn(min = 40.dp)
                         .testTag("inspect_cash_book_${session.sessionId}"),
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = CyanSoftTint,
-                        contentColor = CyanDeep
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = White,
+                        contentColor = NavyText
                     ),
-                    border = BorderStroke(1.dp, CyanBorder)
+                    border = BorderStroke(1.dp, SubtleOutline)
                 ) {
                     Text(
                         text = "View",
-                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Icon(
                         imageVector = Icons.Rounded.ChevronRight,
                         contentDescription = null,
+                        tint = MutedNavyText,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -547,16 +558,16 @@ private fun EmptyHistoryState(
     ) {
         Box(
             modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary))),
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(SoftSurfaceVariant),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ReceiptLong,
                 contentDescription = null,
-                tint = White,
-                modifier = Modifier.size(30.dp)
+                tint = VaultSlateDeep,
+                modifier = Modifier.size(26.dp)
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
@@ -577,7 +588,7 @@ private fun EmptyHistoryState(
         FilledTonalButton(
             onClick = onSyncClick,
             enabled = !isSyncing,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = CyanSoftTint,
                 contentColor = CyanDeep
@@ -588,11 +599,11 @@ private fun EmptyHistoryState(
             if (isSyncing) {
                 CircularProgressIndicator(modifier = Modifier.size(15.dp), color = CyanDeep, strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Syncing...")
+                Text("Refreshing...")
             } else {
-                Icon(Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Sync Cloud", fontWeight = FontWeight.SemiBold)
+                Text("Refresh Records", fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -645,63 +656,65 @@ fun HistoryCashBookDialog(
             shadowElevation = 6.dp
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Executive Blue Header
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary)))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Physical Cash Book",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 15.5.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = White
-                        )
-                        Text(
-                            text = "$dateLabel · ${session.branchId}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = White.copy(alpha = 0.88f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                clipboard?.setPrimaryClip(
-                                    ClipData.newPlainText(
-                                        "Physical Cash Book",
-                                        buildHistoricCashBookText(ledgerDetail, dateLabel)
+                // Soft Executive Header
+                Column(modifier = Modifier.fillMaxWidth().background(White)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Physical Cash Book",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = PlusJakartaSansFontFamily,
+                                    fontSize = 15.5.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = NavyText
+                            )
+                            Text(
+                                text = "$dateLabel · ${session.branchId}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = MutedNavyText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    clipboard?.setPrimaryClip(
+                                        ClipData.newPlainText(
+                                            "Physical Cash Book",
+                                            buildHistoricCashBookText(ledgerDetail, dateLabel)
+                                        )
                                     )
+                                    copiedNotice = true
+                                },
+                                modifier = Modifier.testTag("copy_history_cash_book_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (copiedNotice) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                    contentDescription = "Copy text",
+                                    tint = CyanPrimary,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                copiedNotice = true
-                            },
-                            modifier = Modifier.testTag("copy_history_cash_book_button")
-                        ) {
-                            Icon(
-                                imageVector = if (copiedNotice) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                                contentDescription = "Copy text",
-                                tint = White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = "Close",
-                                tint = White,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Close",
+                                    tint = MutedNavyText,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
+                    HorizontalDivider(color = SubtleOutline)
                 }
 
                 // Ledger Content
@@ -825,11 +838,11 @@ fun HistoryCashBookDialog(
                                     }
                                 }
 
-                                HorizontalDivider(color = CyanBorder)
+                                HorizontalDivider(color = SubtleOutline)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(CyanSoftTint.copy(alpha = 0.45f))
+                                        .background(SoftSurfaceVariant)
                                         .padding(horizontal = 12.dp, vertical = 7.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
@@ -838,7 +851,7 @@ fun HistoryCashBookDialog(
                                         text = "Bundle Cash Total",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = CyanDeep
+                                        color = MutedNavyText
                                     )
                                     Text(
                                         text = formatBirr(session.bundleCashMinor),
@@ -946,11 +959,11 @@ fun HistoryCashBookDialog(
                                     }
                                 }
 
-                                HorizontalDivider(color = CyanBorder)
+                                HorizontalDivider(color = SubtleOutline)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(CyanSoftTint.copy(alpha = 0.45f))
+                                        .background(SoftSurfaceVariant)
                                         .padding(horizontal = 12.dp, vertical = 7.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
@@ -959,7 +972,7 @@ fun HistoryCashBookDialog(
                                         text = "Petty Cash Total",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = CyanDeep
+                                        color = MutedNavyText
                                     )
                                     Text(
                                         text = formatBirr(session.pettyCashMinor),

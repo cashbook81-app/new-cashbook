@@ -9,7 +9,7 @@
         "email": { "type": "string" },
         "staffId": { "type": "string" },
         "branchId": { "type": "string" },
-        "role": { "type": "string", "enum": ["CASHIER", "AUDITOR", "MANAGER", "ADMIN", "CSO", "SUPERVISOR"] },
+        "role": { "type": "string", "enum": ["CASHIER", "AUDITOR", "MANAGER", "HEAD_OFFICE", "ADMIN", "CSO", "SUPERVISOR"] },
         "photoBase64": { "type": "string" },
         "active": { "type": "boolean" },
         "canCreateCashSession": { "type": "boolean" },

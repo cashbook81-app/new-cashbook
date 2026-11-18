@@ -150,16 +150,6 @@ fun AppUpdateDialog(
                     }
                 }
 
-                if (release.assetName != null) {
-                    Text(
-                        text = "Package: ${release.assetName}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        color = MutedNavyText,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = IceSurface,
@@ -182,7 +172,7 @@ fun AppUpdateDialog(
                 }
 
                 Text(
-                    text = "Opens GitHub in your browser to download the updated APK.",
+                    text = "Opens your browser to download the latest Cash Control update.",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MutedNavyText
                 )

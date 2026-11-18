@@ -60,6 +60,7 @@ class SecurityManager(private val context: Context) {
     private fun workingCountsKey(userId: String) = stringPreferencesKey("working_counts_${userId.ifBlank { "default" }}")
     private fun cachedProfileKey(userId: String) = stringPreferencesKey("cached_profile_${userId.ifBlank { "default" }}")
     private fun biometricPromptedKey(userId: String) = booleanPreferencesKey("biometric_prompted_${userId.ifBlank { "default" }}")
+    private fun acknowledgedAlertsKey(userId: String) = stringPreferencesKey("acknowledged_alerts_${userId.ifBlank { "default" }}")
 
     private val allowedAuthenticators =
         BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -171,9 +172,25 @@ class SecurityManager(private val context: Context) {
         }
     }
 
+    suspend fun readBootstrapPreferences(userId: String?): Pair<Boolean, com.example.data.remote.model.UserDto?> {
+        val prefs = context.dataStore.data.first()
+        val biometricEnabled = prefs[BIOMETRIC_ENABLED_KEY] ?: false
+        val cachedProfile = if (!userId.isNullOrBlank()) {
+            parseCachedUserProfile(prefs[cachedProfileKey(userId)])
+        } else {
+            null
+        }
+        return biometricEnabled to cachedProfile
+    }
+
     suspend fun getCachedUserProfile(userId: String): com.example.data.remote.model.UserDto? {
         if (userId.isBlank()) return null
         val raw = context.dataStore.data.first()[cachedProfileKey(userId)] ?: return null
+        return parseCachedUserProfile(raw)
+    }
+
+    private fun parseCachedUserProfile(raw: String?): com.example.data.remote.model.UserDto? {
+        if (raw.isNullOrBlank()) return null
         return try {
             val obj = JSONObject(raw)
             com.example.data.remote.model.UserDto(
@@ -206,6 +223,37 @@ class SecurityManager(private val context: Context) {
         if (userId.isBlank()) return
         context.dataStore.edit { preferences ->
             preferences[biometricPromptedKey(userId)] = prompted
+        }
+    }
+
+    suspend fun getAcknowledgedAlertKeys(userId: String): Set<String> {
+        if (userId.isBlank()) return emptySet()
+        val raw = context.dataStore.data.first()[acknowledgedAlertsKey(userId)] ?: return emptySet()
+        return try {
+            val array = JSONArray(raw)
+            buildSet {
+                for (i in 0 until array.length()) {
+                    val item = array.optString(i)
+                    if (item.isNotBlank()) add(item)
+                }
+            }
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    suspend fun markAlertKeyAcknowledged(userId: String, alertKey: String) {
+        if (userId.isBlank() || alertKey.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val key = acknowledgedAlertsKey(userId)
+            val existing = try {
+                val arr = JSONArray(preferences[key] ?: "[]")
+                List(arr.length()) { idx -> arr.optString(idx) }.filter { it.isNotBlank() }
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val updated = (existing.filterNot { it == alertKey } + alertKey).takeLast(25)
+            preferences[key] = JSONArray(updated).toString()
         }
     }
 

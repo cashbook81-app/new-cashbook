@@ -191,7 +191,7 @@ class AppUpdateCheckerTest {
         )
         val errorResult = notFoundChecker.checkForUpdate()
         assertTrue(errorResult is UpdateCheckResult.Error)
-        assertTrue((errorResult as UpdateCheckResult.Error).message.contains("No published GitHub releases"))
+        assertTrue((errorResult as UpdateCheckResult.Error).message.contains("No software updates are published"))
     }
 
     @Test

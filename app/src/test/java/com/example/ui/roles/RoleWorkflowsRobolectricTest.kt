@@ -26,6 +26,10 @@ import com.example.data.repository.CashSessionRepository
 import com.example.data.repository.PreviousClosingFetchResult
 import com.example.data.repository.buildAuditorCheckId
 import com.example.data.repository.buildDailySessionId
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.AuditorBalancedClosingPopupDialog
+import com.example.CashierDrCrPopupDialog
 import com.example.ui.admin.AdminUsersContent
 import com.example.ui.auditor.AuditorCheckContent
 import com.example.ui.auth.PendingActivationScreen
@@ -40,6 +44,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -53,6 +58,7 @@ private class FakeRoleCashRepository : CashSessionRepository {
     val checksFlow = MutableStateFlow<List<AuditorCheckDto>>(emptyList())
     val savedSessionIds = mutableListOf<String>()
     val appliedCheckIds = mutableListOf<String>()
+    val approvedSessionIds = mutableListOf<String>()
     var syncAllBranchesCount = 0
 
     override fun getAllSessions(): Flow<List<CashSession>> = sessionsFlow
@@ -84,7 +90,12 @@ private class FakeRoleCashRepository : CashSessionRepository {
     override suspend fun getExistingSessionForDate(branchId: String, businessDateMillis: Long): CashSession? = null
     override suspend fun hasFinalClosingForDate(branchId: String, businessDate: Long): Boolean = false
     override suspend fun hasUnapprovedSessions(branchId: String): Boolean = false
-    override suspend fun approveSession(sessionId: String, approvedBy: String) {}
+    override suspend fun approveSession(sessionId: String, approvedBy: String) {
+        approvedSessionIds.add(sessionId)
+        sessionsFlow.value = sessionsFlow.value.map {
+            if (it.sessionId == sessionId) it.copy(isApproved = true, approvedBy = approvedBy) else it
+        }
+    }
     override suspend fun syncPendingSessions() {}
 
     override fun observeAuditorChecksForBranch(branchId: String): Flow<List<AuditorCheckDto>> = checksFlow
@@ -383,7 +394,7 @@ class RoleWorkflowsRobolectricTest {
     }
 
     @Test
-    fun cashierStep4_removesCircleHeroCard_andAutoAppliesAuditorDrCrAndNotifies() {
+    fun cashierStep4_removesCircleHeroCard_andPromptsPopupBeforeFillingAuditorDrCr() {
         val today = todayMidnightMillis()
         val repo = FakeRoleCashRepository()
         val viewModel = CashViewModel(repo)
@@ -411,15 +422,38 @@ class RoleWorkflowsRobolectricTest {
 
         composeRule.setContent {
             MyApplicationTheme {
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 CashCalculatorScreen(
                     viewModel = viewModel,
                     branchId = "SODO DACHI",
                     staffId = "CSH01",
                     securityManager = securityManager
                 )
+                val popup = uiState.pendingAuditorDrCrPopup
+                if (popup != null) {
+                    CashierDrCrPopupDialog(
+                        check = popup,
+                        onAccept = { viewModel.acceptAuditorDrCrPopup(popup) },
+                        onDismiss = { viewModel.dismissAuditorDrCrPopup(popup) }
+                    )
+                }
             }
         }
 
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            viewModel.uiState.value.pendingAuditorDrCrPopup != null
+        }
+        composeRule.waitForIdle()
+
+        // Does NOT overwrite DR/CR until cashier accepts
+        assertEquals(0L, viewModel.uiState.value.totalDRMinor)
+        assertEquals(0L, viewModel.uiState.value.totalCRMinor)
+        composeRule.onNodeWithTag("cashier_auditor_dr_cr_popup_dialog").assertIsDisplayed()
+        composeRule.onNodeWithText("ETB 42,000.00").assertIsDisplayed()
+        composeRule.onNodeWithText("ETB 12,000.00").assertIsDisplayed()
+
+        // Accept fills today's DR and CR
+        composeRule.onNodeWithTag("accept_auditor_dr_cr_popup_button").performClick()
         composeRule.waitUntil(timeoutMillis = 3_000L) {
             viewModel.uiState.value.totalDRMinor == 42_000_00L &&
                 viewModel.uiState.value.totalCRMinor == 12_000_00L
@@ -428,11 +462,120 @@ class RoleWorkflowsRobolectricTest {
 
         assertEquals(42_000_00L, viewModel.uiState.value.totalDRMinor)
         assertEquals(12_000_00L, viewModel.uiState.value.totalCRMinor)
+        assertNull(viewModel.uiState.value.pendingAuditorDrCrPopup)
         assertTrue(repo.appliedCheckIds.contains(checkId))
         assertNotNull(viewModel.uiState.value.latestAuditorCheckForDate)
 
         composeRule.onNodeWithTag("cashier_auditor_dr_cr_banner").assertIsDisplayed()
         composeRule.onNodeWithTag("apply_auditor_dr_cr_button").assertTextContains("Applied")
         composeRule.onNodeWithText("STEP 4 · VERIFY").assertDoesNotExist()
+    }
+
+    @Test
+    fun auditorReceivesBalancedClosingPopup_andApprovesCashierPosition() {
+        val today = todayMidnightMillis()
+        val repo = FakeRoleCashRepository()
+        val viewModel = CashViewModel(repo)
+        viewModel.initializeForSession("uid-aud-1", "SODO DACHI", StaffRole.AUDITOR)
+
+        val closingId = buildDailySessionId("SODO DACHI", today)
+        repo.sessionsFlow.value = listOf(
+            CashSession(
+                sessionId = closingId,
+                branchId = "SODO DACHI",
+                staffId = "CSH01",
+                businessDate = today,
+                openingBalanceMinor = 100_000_00L,
+                totalDRMinor = 45_000_00L,
+                totalCRMinor = 15_000_00L,
+                expectedEndingMinor = 130_000_00L,
+                bundleCashMinor = 120_000_00L,
+                pettyCashMinor = 10_000_00L,
+                totalCountedMinor = 130_000_00L,
+                differenceMinor = 0L,
+                reconciliationStatus = "BALANCED",
+                status = "CLOSED",
+                syncStatus = "SYNCED",
+                isFinal = true,
+                isApproved = false
+            )
+        )
+
+        composeRule.setContent {
+            MyApplicationTheme {
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val popup = uiState.pendingAuditorClosingPopup
+                if (popup != null) {
+                    AuditorBalancedClosingPopupDialog(
+                        session = popup,
+                        onApprove = { viewModel.approveAuditorClosingPopup(popup, "Auditor Hana") },
+                        onDismiss = { viewModel.dismissAuditorClosingPopup(popup) }
+                    )
+                }
+            }
+        }
+
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            viewModel.uiState.value.pendingAuditorClosingPopup != null
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("auditor_balanced_closing_popup_dialog").assertIsDisplayed()
+        composeRule.onNodeWithText("Position Balanced & Closed").assertIsDisplayed()
+        composeRule.onNodeWithText("ETB 100,000.00").assertIsDisplayed()
+        composeRule.onNodeWithText("ETB 45,000.00").assertIsDisplayed()
+        composeRule.onNodeWithText("ETB 15,000.00").assertIsDisplayed()
+        composeRule.onNodeWithText("ETB 130,000.00").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("approve_balanced_closing_popup_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            repo.approvedSessionIds.contains(closingId)
+        }
+        assertNull(viewModel.uiState.value.pendingAuditorClosingPopup)
+    }
+
+    @Test
+    fun headOfficeRole_resolvesAndAdminCanAssignHeadOfficeAccess() {
+        assertEquals(StaffRole.HEAD_OFFICE, StaffRole.fromRaw("HEAD_OFFICE"))
+
+        var savedRole: StaffRole? = null
+        var savedBranch = ""
+        val sampleUsers = listOf(
+            StaffUserRecord(
+                uid = "uid-hq-1",
+                user = UserDto(
+                    fullName = "HQ Director",
+                    email = "hq@company.com",
+                    branchId = UNASSIGNED_BRANCH,
+                    staffId = PENDING_STAFF_ID,
+                    role = StaffRole.CASHIER.firestoreValue,
+                    active = false
+                )
+            )
+        )
+
+        composeRule.setContent {
+            MyApplicationTheme {
+                AdminUsersContent(
+                    users = sampleUsers,
+                    currentAdminUid = "uid-admin-1",
+                    knownBranches = listOf("SODO DACHI"),
+                    onSaveUserAccess = { _, _, branchId, role, _ ->
+                        savedBranch = branchId
+                        savedRole = role
+                        Result.success(Unit)
+                    }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("manage_user_uid-hq-1").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("admin_role_HEAD_OFFICE").performScrollTo().performClick()
+        composeRule.onNodeWithTag("admin_save_access_button").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(StaffRole.HEAD_OFFICE, savedRole)
+        assertEquals("ALL BRANCHES", savedBranch)
     }
 }

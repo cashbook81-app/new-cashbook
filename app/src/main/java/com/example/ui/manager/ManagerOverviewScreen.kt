@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,7 +41,8 @@ data class BranchCashSnapshot(
 @Composable
 fun ManagerOverviewScreen(
     viewModel: CashViewModel,
-    managerName: String
+    managerName: String,
+    headerSubtitle: String = "Multi-Branch Summary"
 ) {
     val allSessions by viewModel.sessionHistory.collectAsState()
     val allAuditorChecks by viewModel.branchAuditorChecks.collectAsState()
@@ -51,6 +51,7 @@ fun ManagerOverviewScreen(
     ManagerOverviewContent(
         sessions = allSessions,
         auditorChecks = allAuditorChecks,
+        headerSubtitle = headerSubtitle,
         selectedLedger = uiState.selectedHistoryLedger,
         isLoading = uiState.isSyncingHistory,
         onOpenSession = { viewModel.openHistoryLedger(it) },
@@ -67,6 +68,7 @@ fun ManagerOverviewScreen(
 fun ManagerOverviewContent(
     sessions: List<CashSession>,
     auditorChecks: List<AuditorCheckDto>,
+    headerSubtitle: String = "Multi-Branch Summary",
     selectedLedger: SessionLedgerDetail? = null,
     isLoading: Boolean = false,
     onOpenSession: (CashSession) -> Unit,
@@ -132,52 +134,35 @@ fun ManagerOverviewContent(
             Column(modifier = Modifier.background(White)) {
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(11.dp))
-                                    .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary))),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.AccountBalance,
-                                    contentDescription = "All Branches",
-                                    tint = White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "All Branches Cash",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = PlusJakartaSansFontFamily,
-                                        fontSize = 17.5.sp
-                                    ),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = NavyText
-                                )
-                                Text(
-                                    text = "Manager Multi-Branch Summary",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                    color = MutedNavyText
-                                )
-                            }
+                        Column {
+                            Text(
+                                text = "All Branches Cash",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = PlusJakartaSansFontFamily,
+                                    fontSize = 17.5.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = VaultSlateDeep
+                            )
+                            Text(
+                                text = headerSubtitle,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = MutedNavyText
+                            )
                         }
                     },
                     actions = {
                         Surface(
-                            shape = RoundedCornerShape(50.dp),
-                            color = CyanSoftTint,
-                            border = BorderStroke(1.dp, CyanBorder),
+                            shape = RoundedCornerShape(6.dp),
+                            color = SoftSurfaceVariant,
+                            border = BorderStroke(1.dp, SubtleOutline),
                             modifier = Modifier.padding(end = 12.dp)
                         ) {
                             Text(
                                 text = "${branchSnapshots.size} Branches",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = CyanDeep,
+                                color = VaultSlateDeep,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
@@ -204,13 +189,13 @@ fun ManagerOverviewContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(top = 12.dp, bottom = 20.dp)
             ) {
-                // Overall Multi-Branch Total Card
+                // Overall Multi-Branch Total Card (Matte Navy)
                 item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(Brush.linearGradient(listOf(VaultSlateDeep, CyanDeep, CyanPrimary)))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(VaultSlateDeep)
                             .padding(16.dp)
                             .testTag("manager_grand_total_card")
                     ) {
@@ -225,10 +210,10 @@ fun ManagerOverviewContent(
                                         text = "OVERALL NETWORK ENDING CASH",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 10.sp,
-                                            letterSpacing = 0.9.sp
+                                            letterSpacing = 0.8.sp
                                         ),
                                         fontWeight = FontWeight.Bold,
-                                        color = White.copy(alpha = 0.78f)
+                                        color = White.copy(alpha = 0.72f)
                                     )
                                     Spacer(modifier = Modifier.height(3.dp))
                                     Text(
@@ -236,14 +221,14 @@ fun ManagerOverviewContent(
                                         style = MaterialTheme.typography.headlineSmall.copy(
                                             fontFeatureSettings = "tnum"
                                         ),
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.Bold,
                                         color = White
                                     )
                                 }
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = White.copy(alpha = 0.16f),
-                                    border = BorderStroke(1.dp, White.copy(alpha = 0.24f))
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = White.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, White.copy(alpha = 0.18f))
                                 ) {
                                     Column(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -258,13 +243,13 @@ fun ManagerOverviewContent(
                                         Text(
                                             text = "$varianceCount Variance",
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                            color = White.copy(alpha = 0.85f)
+                                            color = White.copy(alpha = 0.8f)
                                         )
                                     }
                                 }
                             }
 
-                            HorizontalDivider(color = White.copy(alpha = 0.16f))
+                            HorizontalDivider(color = White.copy(alpha = 0.14f))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -274,12 +259,12 @@ fun ManagerOverviewContent(
                                     Text(
                                         text = "TOTAL BUNDLES",
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                        color = White.copy(alpha = 0.75f)
+                                        color = White.copy(alpha = 0.7f)
                                     )
                                     Text(
                                         text = formatBirr(grandBundleMinor),
                                         style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = White,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -289,12 +274,12 @@ fun ManagerOverviewContent(
                                     Text(
                                         text = "TOTAL PETTY",
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                        color = White.copy(alpha = 0.75f)
+                                        color = White.copy(alpha = 0.7f)
                                     )
                                     Text(
                                         text = formatBirr(grandPettyMinor),
                                         style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = White,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -305,7 +290,7 @@ fun ManagerOverviewContent(
                     }
                 }
 
-                // Filters
+                // Filters matching unified banking pills
                 item {
                     Row(
                         modifier = Modifier
@@ -319,12 +304,29 @@ fun ManagerOverviewContent(
                             "UNBALANCED" to "Unbalanced"
                         )
                         filters.forEach { (key, label) ->
-                            FilterChip(
-                                selected = selectedFilter == key,
+                            val selected = selectedFilter == key
+                            Surface(
                                 onClick = { selectedFilter = key },
-                                label = { Text(label) },
-                                modifier = Modifier.testTag("manager_filter_$key")
-                            )
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selected) VaultSlateDeep else White,
+                                border = BorderStroke(1.dp, if (selected) VaultSlateDeep else SubtleOutline),
+                                modifier = Modifier
+                                    .heightIn(min = 34.dp)
+                                    .testTag("manager_filter_$key")
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) White else NavyText,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -477,7 +479,7 @@ private fun BranchOverviewCard(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "DR / CR Net",
+                        text = "Cash In / Out",
                         style = MaterialTheme.typography.labelSmall,
                         color = MutedNavyText
                     )
@@ -485,51 +487,38 @@ private fun BranchOverviewCard(
                         text = "+${formatBirr(s.totalDRMinor)} / -${formatBirr(s.totalCRMinor)}",
                         style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                         fontWeight = FontWeight.SemiBold,
-                        color = CyanDeep
+                        color = NavyText
                     )
                 }
             }
+
+            HorizontalDivider(color = SubtleOutline.copy(alpha = 0.6f))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val approvalBg = if (s.isApproved) SuccessSoftTint else SoftSurfaceVariant
-                    val approvalColor = if (s.isApproved) SuccessGreen else MutedNavyText
-                    Surface(shape = RoundedCornerShape(6.dp), color = approvalBg) {
-                        Text(
-                            text = if (s.isApproved) "Approved" else if (s.isFinal) "Pending Approval" else "Draft",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.SemiBold,
-                            color = approvalColor,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
-                    }
+                val metaText = buildString {
+                    append(if (s.isApproved) "Approved" else if (s.isFinal) "Pending Approval" else "Draft")
                     snapshot.latestAuditorCheck?.let { chk ->
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = CyanSoftTint,
-                            border = BorderStroke(1.dp, CyanBorder)
-                        ) {
-                            Text(
-                                text = "Auditor: ${chk.checkStatus}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                fontWeight = FontWeight.SemiBold,
-                                color = CyanDeep,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                            )
-                        }
+                        append(" · Auditor: ${chk.checkStatus}")
                     }
                 }
+                Text(
+                    text = metaText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (s.isApproved) SuccessGreen else MutedNavyText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
 
                 if (s.isFinal && !s.isApproved) {
                     TextButton(
                         onClick = onApprove,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                         modifier = Modifier.testTag("manager_approve_${s.branchId}")
                     ) {
                         Text("Approve", fontWeight = FontWeight.Bold, color = CyanPrimary)

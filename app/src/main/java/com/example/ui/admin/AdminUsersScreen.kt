@@ -16,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -86,7 +85,7 @@ fun AdminUsersContent(
     val activeCount = remember(users) { users.count { it.user.active } }
 
     val branchSuggestions = remember(users, knownBranches) {
-        (listOf("SODO DACHI", "HEAD OFFICE") +
+        (listOf("SODO DACHI", "HEAD OFFICE", "ALL BRANCHES") +
             knownBranches +
             users.map { it.user.branchId })
             .map { it.trim().uppercase() }
@@ -103,6 +102,7 @@ fun AdminUsersContent(
                 "CASHIER" -> role == StaffRole.CASHIER
                 "AUDITOR" -> role == StaffRole.AUDITOR
                 "MANAGER" -> role == StaffRole.MANAGER
+                "HEAD_OFFICE" -> role == StaffRole.HEAD_OFFICE
                 else -> true
             }
             val q = searchQuery.trim().lowercase()
@@ -266,7 +266,8 @@ fun AdminUsersContent(
                                 "PENDING" to "Pending ($pendingCount)",
                                 "CASHIER" to "Cashier",
                                 "AUDITOR" to "Auditor",
-                                "MANAGER" to "Manager"
+                                "MANAGER" to "Manager",
+                                "HEAD_OFFICE" to "Head Office"
                             )
                             filters.forEach { (key, label) ->
                                 val selected = selectedFilter == key
@@ -430,6 +431,7 @@ private fun StaffMemberCard(
 
     val roleColor = when (role) {
         StaffRole.ADMIN -> CyanDeep
+        StaffRole.HEAD_OFFICE -> CyanDeep
         StaffRole.MANAGER -> VaultSlateDeep
         StaffRole.AUDITOR -> CyanPrimary
         StaffRole.CASHIER -> NavyText
@@ -613,6 +615,7 @@ private fun AdminAssignUserDialog(
                 when (initialRole) {
                     StaffRole.AUDITOR -> "AUD001"
                     StaffRole.MANAGER -> "MGR001"
+                    StaffRole.HEAD_OFFICE -> "HQ001"
                     StaffRole.ADMIN -> "ADM001"
                     StaffRole.CASHIER -> "CSH001"
                 }
@@ -710,14 +713,21 @@ private fun AdminAssignUserDialog(
                                 onClick = {
                                     selectedRole = roleOption
                                     if (staffId.startsWith("CSH") || staffId.startsWith("AUD") ||
-                                        staffId.startsWith("MGR") || staffId == PENDING_STAFF_ID
+                                        staffId.startsWith("MGR") || staffId.startsWith("HQ") ||
+                                        staffId.startsWith("ADM") || staffId == PENDING_STAFF_ID
                                     ) {
                                         staffId = when (roleOption) {
                                             StaffRole.CASHIER -> "CSH001"
                                             StaffRole.AUDITOR -> "AUD001"
                                             StaffRole.MANAGER -> "MGR001"
+                                            StaffRole.HEAD_OFFICE -> "HQ001"
                                             StaffRole.ADMIN -> "ADM001"
                                         }
+                                    }
+                                    if (roleOption == StaffRole.HEAD_OFFICE &&
+                                        (branchId == UNASSIGNED_BRANCH || branchId == "SODO DACHI" || branchId.isBlank())
+                                    ) {
+                                        branchId = "ALL BRANCHES"
                                     }
                                 },
                                 label = { Text(roleOption.displayLabel) },

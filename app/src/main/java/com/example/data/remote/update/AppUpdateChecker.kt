@@ -227,7 +227,7 @@ class AppUpdateChecker(
                         releaseTitle = release.name?.trim().takeUnless { it.isNullOrEmpty() }
                             ?: "Cash Control v$latestVersion",
                         releaseNotes = release.body?.trim().takeUnless { it.isNullOrEmpty() }
-                            ?: "A new Cash Control release is available on GitHub.",
+                            ?: "A new version of Cash Control is available.",
                         downloadUrl = downloadUrl,
                         releasePageUrl = fallbackPage,
                         assetName = apkAsset?.name?.takeIf { it.isNotBlank() },
@@ -238,15 +238,15 @@ class AppUpdateChecker(
                 )
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
-                    404 -> "No published GitHub releases found yet for ${slug.fullSlug}."
-                    403 -> "GitHub API rate limit reached. Try again later."
-                    else -> "GitHub update check failed (HTTP ${e.code()})."
+                    404 -> "No software updates are published yet."
+                    403 -> "Update service is temporarily busy. Try again later."
+                    else -> "Unable to check for updates (Code ${e.code()})."
                 }
                 UpdateCheckResult.Error(msg)
             } catch (e: Exception) {
                 UpdateCheckResult.Error(
                     e.localizedMessage?.takeIf { it.isNotBlank() }
-                        ?: "Unable to reach GitHub Releases."
+                        ?: "Unable to reach the update server."
                 )
             }
         }
