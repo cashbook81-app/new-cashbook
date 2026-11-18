@@ -312,10 +312,14 @@ class RoleWorkflowsRobolectricTest {
 
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Auditor Check").assertIsDisplayed()
-        composeRule.onNodeWithTag("auditor_yesterday_reference_card").assertIsDisplayed()
+        composeRule.onNodeWithText("TODAY'S AUDITOR BALANCE").assertDoesNotExist()
+        composeRule.onNodeWithTag("auditor_yesterday_reference_card").assertDoesNotExist()
+        composeRule.onNodeWithText("BALANCE SUMMARY").assertDoesNotExist()
+        composeRule.onNodeWithText("RECONCILIATION").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Auditor Ending Balance").performScrollTo().assertIsDisplayed()
 
-        composeRule.onNodeWithTag("auditor_dr_input").performTextReplacement("50000.00")
-        composeRule.onNodeWithTag("auditor_cr_input").performTextReplacement("25000.00")
+        composeRule.onNodeWithTag("auditor_dr_input").performScrollTo().performTextReplacement("50000.00")
+        composeRule.onNodeWithTag("auditor_cr_input").performScrollTo().performTextReplacement("25000.00")
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("auditor_balance_status_badge").assertTextContains("BALANCED")

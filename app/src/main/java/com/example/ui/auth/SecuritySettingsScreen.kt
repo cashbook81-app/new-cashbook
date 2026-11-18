@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -62,19 +63,24 @@ import com.example.data.remote.update.UpdateCheckResult
 import com.example.data.remote.update.normalizeVersionString
 import com.example.data.repository.UserRepository
 import com.example.ui.update.AppUpdateDialog
+import com.example.ui.theme.AmberAccent
+import com.example.ui.theme.AmberSoftTint
 import com.example.ui.theme.CyanBorder
 import com.example.ui.theme.CyanDeep
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanSoftTint
 import com.example.ui.theme.DangerBorder
 import com.example.ui.theme.DangerRed
+import com.example.ui.theme.DangerSoftTint
 import com.example.ui.theme.IceSurface
 import com.example.ui.theme.MutedNavyText
 import com.example.ui.theme.NavyText
 import com.example.ui.theme.PlusJakartaSansFontFamily
 import com.example.ui.theme.SoftSurfaceVariant
 import com.example.ui.theme.SubtleOutline
+import com.example.ui.theme.SuccessBorder
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.SuccessSoftTint
 import com.example.ui.theme.VaultSlateDeep
 import com.example.ui.theme.White
 import com.google.firebase.Firebase
@@ -194,11 +200,30 @@ fun ProfileScreen(
 
     val statusAccentColor by animateColorAsState(
         targetValue = when {
-            biometricAvailability != BiometricAvailability.AVAILABLE -> DangerRed
-            biometricEnabled -> CyanDeep
+            biometricAvailability == BiometricAvailability.UNAVAILABLE -> DangerRed
+            biometricAvailability == BiometricAvailability.NONE_ENROLLED -> AmberAccent
+            biometricEnabled -> SuccessGreen
             else -> MutedNavyText
         },
         label = "status_color"
+    )
+    val statusContainerColor by animateColorAsState(
+        targetValue = when {
+            biometricAvailability == BiometricAvailability.UNAVAILABLE -> DangerSoftTint
+            biometricAvailability == BiometricAvailability.NONE_ENROLLED -> AmberSoftTint
+            biometricEnabled -> SuccessSoftTint
+            else -> SoftSurfaceVariant
+        },
+        label = "status_bg"
+    )
+    val statusBorderColor by animateColorAsState(
+        targetValue = when {
+            biometricAvailability == BiometricAvailability.UNAVAILABLE -> DangerBorder
+            biometricAvailability == BiometricAvailability.NONE_ENROLLED -> AmberAccent.copy(alpha = 0.28f)
+            biometricEnabled -> SuccessBorder
+            else -> SubtleOutline
+        },
+        label = "status_border"
     )
 
     fun launchBiometricVerification(
@@ -484,16 +509,16 @@ fun ProfileScreen(
                                 color = MutedNavyText
                             )
                             Surface(
-                                color = if (biometricEnabled && isBiometricAvailable) CyanSoftTint else SoftSurfaceVariant,
+                                color = statusContainerColor,
                                 shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (biometricEnabled && isBiometricAvailable) CyanBorder else SubtleOutline
-                                )
+                                border = BorderStroke(1.dp, statusBorderColor)
                             ) {
                                 Text(
                                     text = statusBadgeText,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.4.sp
+                                    ),
                                     fontWeight = FontWeight.Bold,
                                     color = statusAccentColor,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -588,30 +613,65 @@ fun ProfileScreen(
                         )
 
                         // Auto-Lock Timeout Segmented Bar
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            ProfileSettingIcon(Icons.Rounded.Timer)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Session Auto-Lock",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = NavyText
+                        val options = listOf(1 to "1m", 5 to "5m", 15 to "15m", -1 to "Off")
+                        val selectorEnabled = biometricEnabled && isBiometricAvailable
+                        val activeTimeoutLabel = options.firstOrNull { it.first == autoLockMinutes }?.second ?: "5m"
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ProfileSettingIcon(Icons.Rounded.Timer)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Session Auto-Lock",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = NavyText
+                                    )
+                                    Text(
+                                        text = if (selectorEnabled) {
+                                            "Lock after inactivity"
+                                        } else {
+                                            "Enable biometric login to customize"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        color = MutedNavyText
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = if (selectorEnabled) CyanSoftTint else SoftSurfaceVariant,
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (selectorEnabled) CyanBorder else SubtleOutline
                                 )
+                            ) {
                                 Text(
-                                    text = "Automatically lock after inactivity",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                    color = MutedNavyText
+                                    text = if (selectorEnabled) activeTimeoutLabel else "Locked",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.5.sp,
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectorEnabled) CyanDeep else MutedNavyText,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        val options = listOf(1 to "1m", 5 to "5m", 15 to "15m", -1 to "Off")
-                        val selectorEnabled = biometricEnabled && isBiometricAvailable
                         Surface(
-                            shape = RoundedCornerShape(11.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = SoftSurfaceVariant,
                             border = BorderStroke(1.dp, SubtleOutline),
                             modifier = Modifier.fillMaxWidth()
@@ -619,11 +679,21 @@ fun ProfileScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(3.dp),
+                                    .padding(4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 options.forEach { (minutes, label) ->
                                     val selected = autoLockMinutes == minutes
+                                    val pillColor = when {
+                                        selected && selectorEnabled -> White
+                                        selected -> White.copy(alpha = 0.72f)
+                                        else -> Color.Transparent
+                                    }
+                                    val pillBorder = when {
+                                        selected && selectorEnabled -> BorderStroke(1.dp, CyanBorder)
+                                        selected -> BorderStroke(1.dp, SubtleOutline)
+                                        else -> null
+                                    }
                                     Surface(
                                         onClick = {
                                             if (selectorEnabled) {
@@ -638,28 +708,28 @@ fun ProfileScreen(
                                             }
                                         },
                                         enabled = selectorEnabled,
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (selected && selectorEnabled) White else Color.Transparent,
+                                        shape = RoundedCornerShape(9.dp),
+                                        color = pillColor,
                                         shadowElevation = if (selected && selectorEnabled) 1.dp else 0.dp,
-                                        border = if (selected && selectorEnabled) {
-                                            BorderStroke(1.dp, CyanBorder)
-                                        } else {
-                                            null
-                                        },
+                                        border = pillBorder,
                                         modifier = Modifier
                                             .weight(1f)
-                                            .heightIn(min = 38.dp)
+                                            .heightIn(min = 48.dp)
                                             .testTag("timeout_chip_$minutes")
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Text(
                                                 text = label,
-                                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontSize = 12.5.sp,
+                                                    fontFeatureSettings = "tnum"
+                                                ),
                                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                                 color = when {
-                                                    !selectorEnabled -> MutedNavyText.copy(alpha = 0.45f)
-                                                    selected -> CyanDeep
-                                                    else -> MutedNavyText
+                                                    selected && selectorEnabled -> CyanDeep
+                                                    selected -> NavyText.copy(alpha = 0.72f)
+                                                    selectorEnabled -> NavyText.copy(alpha = 0.78f)
+                                                    else -> MutedNavyText.copy(alpha = 0.75f)
                                                 }
                                             )
                                         }
@@ -669,12 +739,23 @@ fun ProfileScreen(
                         }
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
+                            modifier = Modifier.padding(vertical = 10.dp),
                             color = SubtleOutline
                         )
 
                         if (biometricAvailability == BiometricAvailability.NONE_ENROLLED) {
-                            OutlinedButton(
+                            ProfileActionRow(
+                                icon = Icons.Rounded.Fingerprint,
+                                title = "Enroll Fingerprint",
+                                subtitle = "Add biometric unlock in device security",
+                                badgeText = "Set Up",
+                                badgeContainerColor = AmberSoftTint,
+                                badgeContentColor = AmberAccent,
+                                badgeBorderColor = AmberAccent.copy(alpha = 0.25f),
+                                iconContainerColor = AmberSoftTint,
+                                iconTint = AmberAccent,
+                                iconBorderColor = AmberAccent.copy(alpha = 0.25f),
+                                testTag = "enroll_biometric_button",
                                 onClick = {
                                     val enrollIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                         Intent(Settings.ACTION_BIOMETRIC_ENROLL).apply {
@@ -692,77 +773,52 @@ fun ProfileScreen(
                                     } catch (_: Exception) {
                                         context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
                                     }
-                                },
-                                shape = RoundedCornerShape(11.dp),
-                                border = BorderStroke(1.dp, CyanBorder),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanPrimary),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .testTag("enroll_biometric_button")
-                            ) {
-                                Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(17.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Enroll Fingerprint", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                                }
+                            )
                         } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        launchBiometricVerification(
-                                            title = "Verify Identity",
-                                            subtitle = "Touch the fingerprint sensor",
-                                            onVerified = { },
-                                            successMessage = "Verified."
-                                        )
-                                    },
-                                    enabled = isBiometricAvailable,
-                                    shape = RoundedCornerShape(11.dp),
-                                    border = BorderStroke(1.dp, SubtleOutline),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NavyText),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 48.dp)
-                                        .testTag("verify_biometric_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Fingerprint,
-                                        contentDescription = null,
-                                        tint = CyanPrimary,
-                                        modifier = Modifier.size(17.dp)
+                            ProfileActionRow(
+                                icon = Icons.Rounded.VerifiedUser,
+                                title = "Verify Biometric Sensor",
+                                subtitle = if (isBiometricAvailable) {
+                                    "Test fingerprint recognition now"
+                                } else {
+                                    "Biometric hardware unavailable on device"
+                                },
+                                badgeText = if (isBiometricAvailable) "Verify" else "N/A",
+                                enabled = isBiometricAvailable,
+                                testTag = "verify_biometric_button",
+                                onClick = {
+                                    launchBiometricVerification(
+                                        title = "Verify Identity",
+                                        subtitle = "Touch the fingerprint sensor",
+                                        onVerified = { },
+                                        successMessage = "Verified."
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Verify Now", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 }
+                            )
 
-                                if (biometricEnabled && isBiometricAvailable) {
-                                    FilledTonalButton(
-                                        onClick = onLockAppNow,
-                                        shape = RoundedCornerShape(11.dp),
-                                        colors = ButtonDefaults.filledTonalButtonColors(
-                                            containerColor = CyanSoftTint,
-                                            contentColor = CyanDeep
-                                        ),
-                                        border = BorderStroke(1.dp, CyanBorder),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 48.dp)
-                                            .testTag("lock_app_now_button")
-                                    ) {
-                                        Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Lock App", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
+                            if (biometricEnabled && isBiometricAvailable) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    color = SubtleOutline
+                                )
+                                ProfileActionRow(
+                                    icon = Icons.Rounded.Lock,
+                                    title = "Lock Vault Now",
+                                    subtitle = "Require fingerprint immediately",
+                                    badgeText = "Lock",
+                                    badgeContainerColor = CyanSoftTint,
+                                    badgeContentColor = CyanDeep,
+                                    badgeBorderColor = CyanBorder,
+                                    testTag = "lock_app_now_button",
+                                    onClick = onLockAppNow
+                                )
                             }
                         }
                     }
                 }
 
-                // Clean App Version & Updates Card (no technical repository UI exposed)
+                // System & Session Card (Grouped Fintech Settings Rows)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -771,72 +827,31 @@ fun ProfileScreen(
                     border = BorderStroke(1.dp, SubtleOutline)
                 ) {
                     val installedVersion = normalizeVersionString(BuildConfig.VERSION_NAME).ifBlank { "1.0.0" }
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                ProfileSettingIcon(Icons.Rounded.SystemUpdate)
-                                Column {
-                                    Text(
-                                        text = "App Version",
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = NavyText
-                                    )
-                                    Text(
-                                        text = "Cash Control v$installedVersion",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.5.sp,
-                                            fontFeatureSettings = "tnum"
-                                        ),
-                                        color = MutedNavyText
-                                    )
-                                }
-                            }
-                            Surface(
-                                color = SoftSurfaceVariant,
-                                shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, SubtleOutline)
-                            ) {
-                                Text(
-                                    text = "v$installedVersion",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 10.5.sp,
-                                        fontFeatureSettings = "tnum"
-                                    ),
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyText,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "SYSTEM & SESSION",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.5.sp,
+                                letterSpacing = 0.8.sp
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = MutedNavyText
+                        )
 
-                        if (!updateStatusMessage.isNullOrBlank()) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = IceSurface,
-                                border = BorderStroke(1.dp, SubtleOutline),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = updateStatusMessage!!,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
-                                    color = NavyText,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        OutlinedButton(
+                        ProfileActionRow(
+                            icon = Icons.Rounded.SystemUpdate,
+                            title = "Software & Updates",
+                            subtitle = if (isCheckingUpdates) {
+                                "Checking for latest release..."
+                            } else {
+                                "Cash Control · Version $installedVersion"
+                            },
+                            badgeText = if (isCheckingUpdates) null else "v$installedVersion",
+                            isLoading = isCheckingUpdates,
+                            enabled = !isCheckingUpdates,
+                            testTag = "check_for_updates_button",
                             onClick = {
                                 if (!isCheckingUpdates) {
                                     isCheckingUpdates = true
@@ -865,65 +880,56 @@ fun ProfileScreen(
                                         }
                                     }
                                 }
-                            },
-                            enabled = !isCheckingUpdates,
-                            shape = RoundedCornerShape(11.dp),
-                            border = BorderStroke(1.dp, CyanBorder),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = CyanSoftTint,
-                                contentColor = CyanDeep
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag("check_for_updates_button")
-                        ) {
-                            if (isCheckingUpdates) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = CyanDeep
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Checking for Updates...", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Rounded.SystemUpdate,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Check for Updates", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        )
+
+                        AnimatedVisibility(visible = !updateStatusMessage.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = IceSurface,
+                                border = BorderStroke(1.dp, SubtleOutline),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Info,
+                                        contentDescription = null,
+                                        tint = CyanPrimary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = updateStatusMessage.orEmpty(),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                                        color = NavyText
+                                    )
+                                }
                             }
                         }
-                    }
-                }
 
-                // Understated Enterprise Sign Out Button
-                OutlinedButton(
-                    onClick = { showLogoutDialog = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("logout_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, DangerBorder),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = White,
-                        contentColor = DangerRed
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Logout,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Sign Out",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
-                        fontWeight = FontWeight.SemiBold
-                    )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            color = SubtleOutline
+                        )
+
+                        ProfileActionRow(
+                            icon = Icons.AutoMirrored.Rounded.Logout,
+                            title = "Sign Out",
+                            subtitle = "End active session on this device",
+                            titleColor = DangerRed,
+                            iconContainerColor = DangerSoftTint,
+                            iconTint = DangerRed,
+                            iconBorderColor = DangerBorder,
+                            chevronTint = DangerRed.copy(alpha = 0.75f),
+                            testTag = "logout_button",
+                            onClick = { showLogoutDialog = true }
+                        )
+                    }
                 }
 
                 Text(
@@ -1304,19 +1310,130 @@ private fun SecuritySwitchRow(
 }
 
 @Composable
-private fun ProfileSettingIcon(icon: ImageVector) {
+private fun ProfileActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    testTag: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
+    titleColor: Color = NavyText,
+    badgeText: String? = null,
+    badgeContainerColor: Color = SoftSurfaceVariant,
+    badgeContentColor: Color = MutedNavyText,
+    badgeBorderColor: Color = SubtleOutline,
+    iconContainerColor: Color = CyanSoftTint,
+    iconTint: Color = CyanPrimary,
+    iconBorderColor: Color = CyanBorder.copy(alpha = 0.55f),
+    chevronTint: Color = MutedNavyText
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        color = Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ProfileSettingIcon(
+                    icon = icon,
+                    containerColor = if (enabled) iconContainerColor else SoftSurfaceVariant,
+                    tint = if (enabled) iconTint else MutedNavyText.copy(alpha = 0.6f),
+                    borderColor = if (enabled) iconBorderColor else SubtleOutline
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (enabled) titleColor else MutedNavyText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MutedNavyText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = CyanPrimary
+                    )
+                } else if (!badgeText.isNullOrBlank()) {
+                    Surface(
+                        color = badgeContainerColor,
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, badgeBorderColor)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.5.sp,
+                                fontFeatureSettings = "tnum"
+                            ),
+                            fontWeight = FontWeight.SemiBold,
+                            color = badgeContentColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = if (enabled) chevronTint else MutedNavyText.copy(alpha = 0.4f),
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileSettingIcon(
+    icon: ImageVector,
+    containerColor: Color = CyanSoftTint,
+    tint: Color = CyanPrimary,
+    borderColor: Color = CyanBorder.copy(alpha = 0.55f)
+) {
     Box(
         modifier = Modifier
             .size(34.dp)
             .clip(RoundedCornerShape(9.dp))
-            .background(CyanSoftTint)
-            .border(1.dp, CyanBorder.copy(alpha = 0.55f), RoundedCornerShape(9.dp)),
+            .background(containerColor)
+            .border(1.dp, borderColor, RoundedCornerShape(9.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = CyanPrimary,
+            tint = tint,
             modifier = Modifier.size(18.dp)
         )
     }

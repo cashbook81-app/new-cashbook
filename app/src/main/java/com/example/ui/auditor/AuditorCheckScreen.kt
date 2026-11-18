@@ -20,9 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -35,8 +33,8 @@ import com.example.data.local.entities.CashSession
 import com.example.data.remote.model.AuditorCheckDto
 import com.example.ui.calculator.ThousandsSeparatorVisualTransformation
 import com.example.ui.theme.*
-import com.example.ui.util.formatAmount
 import com.example.ui.util.formatBirr
+import com.example.ui.util.formatSignedBirr
 import com.example.ui.viewmodel.CashViewModel
 import com.example.ui.viewmodel.EtbParseResult
 import com.example.ui.viewmodel.formatMinorAsFixedTwoDecimals
@@ -266,13 +264,13 @@ fun AuditorCheckContent(
                             text = "Auditor Check",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 17.5.sp
+                                fontSize = 16.sp
                             ),
                             fontWeight = FontWeight.Bold,
                             color = VaultSlateDeep
                         )
                         Text(
-                            text = "Branch Staff · $auditorStaffId",
+                            text = "Staff · $auditorStaffId",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             color = MutedNavyText
                         )
@@ -283,7 +281,7 @@ fun AuditorCheckContent(
                         border = BorderStroke(1.dp, SubtleOutline)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -317,28 +315,18 @@ fun AuditorCheckContent(
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Business Date Selector Row
+                // Compact Audit Date & Status Bar (replaces oversized dark hero card)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "AUDIT DATE",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.5.sp,
-                            letterSpacing = 0.7.sp
-                        ),
-                        fontWeight = FontWeight.Bold,
-                        color = MutedNavyText
-                    )
                     Surface(
                         onClick = { showDatePicker = true },
                         shape = RoundedCornerShape(9.dp),
                         color = White,
                         border = BorderStroke(1.dp, CyanBorder),
-                        modifier = Modifier
-                            .testTag("auditor_date_chip")
+                        modifier = Modifier.testTag("auditor_date_chip")
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -359,204 +347,21 @@ fun AuditorCheckContent(
                             )
                         }
                     }
-                }
 
-                // Matte Banking Today's Balance Card
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(VaultSlateDeep)
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "TODAY'S AUDITOR BALANCE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.sp,
-                                    letterSpacing = 0.7.sp
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.72f)
-                            )
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color.White
-                            ) {
-                                Text(
-                                    text = verificationStatus,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = verdictColor,
-                                    modifier = Modifier
-                                        .padding(horizontal = 8.dp, vertical = 2.5.dp)
-                                        .testTag("auditor_balance_status_badge")
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = formatBirr(expectedEndingMinor),
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 24.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = White
-                        )
-
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            HeroStatItem(
-                                label = "Opening",
-                                amount = formatAmount(openingMinor),
-                                modifier = Modifier.weight(1f)
-                            )
-                            HeroStatItem(
-                                label = "Cash In (DR)",
-                                amount = "+${formatAmount(drMinor)}",
-                                modifier = Modifier.weight(1f)
-                            )
-                            HeroStatItem(
-                                label = "Cash Out (CR)",
-                                amount = "-${formatAmount(crMinor)}",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-                // Yesterday's Closing Reference Card (Full-width closing + 2-col DR/CR so zero "..." truncation)
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = White,
-                    border = BorderStroke(1.dp, SubtleOutline),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("auditor_yesterday_reference_card")
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = verdictBg,
+                        border = BorderStroke(1.dp, verdictColor.copy(alpha = 0.28f))
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val yDate = yesterdaySession?.let {
-                                SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(it.businessDate))
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.History,
-                                    contentDescription = null,
-                                    tint = CyanDeep,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = if (yDate != null) "PREVIOUS CLOSING · $yDate" else "PREVIOUS CLOSING",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 10.5.sp,
-                                        letterSpacing = 0.6.sp
-                                    ),
-                                    fontWeight = FontWeight.Bold,
-                                    color = MutedNavyText
-                                )
-                            }
-                            if (yesterdaySession != null) {
-                                FilledTonalButton(
-                                    onClick = {
-                                        openingText = formatMinorAsFixedTwoDecimals(yesterdaySession.totalCountedMinor)
-                                        inputValidationError = null
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = CyanSoftTint,
-                                        contentColor = CyanDeep
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                    modifier = Modifier
-                                        .heightIn(min = 32.dp)
-                                        .testTag("auditor_use_yesterday_closing_btn")
-                                ) {
-                                    Text(
-                                        text = "Use as Opening",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-
-                        if (yesterdaySession == null) {
-                            Text(
-                                text = "No prior closing record available for this branch.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MutedNavyText
-                            )
-                        } else {
-                            // Full-width row for yesterday's Closing Balance (zero clipping)
-                            Surface(
-                                shape = RoundedCornerShape(9.dp),
-                                color = SoftSurfaceVariant,
-                                border = BorderStroke(1.dp, CyanBorder.copy(alpha = 0.7f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 11.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Closing Balance",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MutedNavyText
-                                    )
-                                    Text(
-                                        text = formatBirr(yesterdaySession.totalCountedMinor),
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontSize = 15.5.sp,
-                                            fontFeatureSettings = "tnum"
-                                        ),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = VaultSlateDeep
-                                    )
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                PreviousMovementTile(
-                                    label = "Cash In (DR)",
-                                    value = formatBirr(yesterdaySession.totalDRMinor),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                PreviousMovementTile(
-                                    label = "Cash Out (CR)",
-                                    value = formatBirr(yesterdaySession.totalCRMinor),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
+                        Text(
+                            text = verificationStatus,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = verdictColor,
+                            modifier = Modifier
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                                .testTag("auditor_balance_status_badge")
+                        )
                     }
                 }
 
@@ -568,30 +373,18 @@ fun AuditorCheckContent(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "TODAY'S LEDGER INPUT",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    letterSpacing = 0.6.sp
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = MutedNavyText
-                            )
-                            Text(
-                                text = "ETB",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                fontWeight = FontWeight.SemiBold,
-                                color = MutedNavyText
-                            )
-                        }
+                        Text(
+                            text = "DAILY DR & CR ENTRY",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.5.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = MutedNavyText
+                        )
 
                         LedgerAmountField(
                             value = openingText,
@@ -602,6 +395,8 @@ fun AuditorCheckContent(
                                 }
                             },
                             label = "Opening Balance",
+                            prefixText = "ETB ",
+                            accentColor = CyanPrimary,
                             visualTransformation = currencyVisual,
                             imeAction = ImeAction.Next,
                             onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
@@ -617,6 +412,8 @@ fun AuditorCheckContent(
                                 }
                             },
                             label = "Cash In · DR (+)",
+                            prefixText = "+ETB ",
+                            accentColor = SuccessGreen,
                             visualTransformation = currencyVisual,
                             imeAction = ImeAction.Next,
                             onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
@@ -631,7 +428,9 @@ fun AuditorCheckContent(
                                     inputValidationError = null
                                 }
                             },
-                            label = "Cash Out · CR (-)",
+                            label = "Cash Out · CR (−)",
+                            prefixText = "-ETB ",
+                            accentColor = DangerRed,
                             visualTransformation = currencyVisual,
                             imeAction = ImeAction.Next,
                             onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
@@ -641,9 +440,13 @@ fun AuditorCheckContent(
                         OutlinedTextField(
                             value = notesText,
                             onValueChange = { notesText = it.take(300) },
-                            label = { Text("Audit Note (Optional)") },
-                            placeholder = { Text("Add remarks if needed") },
+                            label = { Text("Audit Note (Optional)", fontSize = 12.5.sp) },
+                            placeholder = { Text("Add remarks if needed", fontSize = 13.sp) },
                             singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 13.5.sp,
+                                color = NavyText
+                            ),
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = CyanPrimary,
@@ -661,7 +464,7 @@ fun AuditorCheckContent(
                     }
                 }
 
-                // Reconciliation Comparison Card
+                // Concise Ending Balance & Cashier Comparison Card
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = White,
@@ -671,14 +474,14 @@ fun AuditorCheckContent(
                         .testTag("auditor_comparison_card")
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "CASH RECONCILIATION",
+                            text = "RECONCILIATION",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 10.5.sp,
-                                letterSpacing = 0.6.sp
+                                letterSpacing = 0.5.sp
                             ),
                             fontWeight = FontWeight.Bold,
                             color = MutedNavyText
@@ -686,9 +489,9 @@ fun AuditorCheckContent(
 
                         ReconciliationLedgerRow(
                             label = "Auditor Ending Balance",
-                            sublabel = "Opening + DR - CR",
+                            sublabel = "Opening + DR − CR",
                             value = formatBirr(expectedEndingMinor),
-                            valueColor = VaultSlateDeep
+                            valueColor = CyanPrimary
                         )
 
                         HorizontalDivider(color = SubtleOutline)
@@ -714,7 +517,7 @@ fun AuditorCheckContent(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -731,20 +534,20 @@ fun AuditorCheckContent(
                                             },
                                             contentDescription = null,
                                             tint = verdictColor,
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(17.dp)
                                         )
                                         Text(
                                             text = "Variance ($verificationStatus)",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
                                             fontWeight = FontWeight.Bold,
                                             color = verdictColor
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = formatBirr(differenceMinor),
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontSize = 15.5.sp,
+                                        text = formatSignedBirr(differenceMinor),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 14.5.sp,
                                             fontFeatureSettings = "tnum"
                                         ),
                                         fontWeight = FontWeight.ExtraBold,
@@ -812,7 +615,7 @@ fun AuditorCheckContent(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 50.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("submit_auditor_check_button")
                 ) {
                     if (isSubmitting) {
@@ -833,12 +636,12 @@ fun AuditorCheckContent(
                         Text(
                             text = if (existingCheckForDate != null) "Update DR & CR" else "Submit DR & CR",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.5.sp
+                            fontSize = 14.sp
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
         }
     }
@@ -883,72 +686,12 @@ fun AuditorCheckContent(
 }
 
 @Composable
-private fun HeroStatItem(
-    label: String,
-    amount: String,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-            color = Color.White.copy(alpha = 0.68f),
-            maxLines = 1
-        )
-        Text(
-            text = amount,
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontSize = 12.5.sp,
-                fontFeatureSettings = "tnum"
-            ),
-            fontWeight = FontWeight.SemiBold,
-            color = White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun PreviousMovementTile(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(IceSurface)
-            .border(1.dp, SubtleOutline, RoundedCornerShape(9.dp))
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-            fontWeight = FontWeight.SemiBold,
-            color = MutedNavyText
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.5.sp,
-                fontFeatureSettings = "tnum"
-            ),
-            fontWeight = FontWeight.Bold,
-            color = NavyText
-        )
-    }
-}
-
-@Composable
 private fun LedgerAmountField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
+    prefixText: String,
+    accentColor: Color,
     visualTransformation: ThousandsSeparatorVisualTransformation,
     imeAction: ImeAction,
     onImeAction: () -> Unit,
@@ -957,19 +700,19 @@ private fun LedgerAmountField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label, fontWeight = FontWeight.Medium) },
-        placeholder = { Text("0.00") },
+        label = { Text(label, fontWeight = FontWeight.Medium, fontSize = 12.5.sp) },
+        placeholder = { Text("0.00", fontSize = 14.sp) },
         prefix = {
             Text(
-                text = "ETB ",
-                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                text = prefixText,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp),
                 fontWeight = FontWeight.Bold,
-                color = MutedNavyText
+                color = accentColor
             )
         },
         visualTransformation = visualTransformation,
-        textStyle = MaterialTheme.typography.titleMedium.copy(
-            fontSize = 17.sp,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = 14.5.sp,
             fontWeight = FontWeight.Bold,
             fontFeatureSettings = "tnum",
             color = NavyText
@@ -977,11 +720,12 @@ private fun LedgerAmountField(
         singleLine = true,
         shape = RoundedCornerShape(10.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = CyanPrimary,
+            focusedBorderColor = accentColor,
             unfocusedBorderColor = SubtleOutline,
+            focusedLabelColor = accentColor,
             focusedContainerColor = White,
             unfocusedContainerColor = IceSurface,
-            cursorColor = CyanPrimary
+            cursorColor = accentColor
         ),
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Decimal,
@@ -1012,21 +756,21 @@ private fun ReconciliationLedgerRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                 fontWeight = FontWeight.SemiBold,
                 color = NavyText
             )
             Text(
                 text = sublabel,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                 color = MutedNavyText
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.titleSmall.copy(
-                fontSize = 15.5.sp,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 14.5.sp,
                 fontFeatureSettings = "tnum"
             ),
             fontWeight = FontWeight.Bold,
